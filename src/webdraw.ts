@@ -1,4 +1,4 @@
-import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, svg, nothing, type PropertyValues, type TemplateResult } from "lit";
 import rough from "roughjs/bin/rough";
 import { getStroke } from "perfect-freehand";
 import {
@@ -60,7 +60,7 @@ const TOOL_META: readonly [Tool, string, string][] = [
   ["eraser", "Eraser (E or 0)", "0"],
 ];
 
-const svg = (body: TemplateResult, viewBox = "0 0 24 24") => html`
+const svgIcon = (body: TemplateResult, viewBox = "0 0 24 24") => svg`
   <svg aria-hidden="true" focusable="false" viewBox=${viewBox} fill="none"
     stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     ${body}
@@ -68,22 +68,22 @@ const svg = (body: TemplateResult, viewBox = "0 0 24 24") => html`
 
 const icon = (name: Tool | "menu" | "library" | "undo" | "redo" | "help" | "more") => {
   switch (name) {
-    case "hand": return svg(html`<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 5.5v-2a1.5 1.5 0 1 1 3 0V12M14 5.5a1.5 1.5 0 0 1 3 0V12M17 7.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-4.8-2.7L3.7 13.3a1.5 1.5 0 0 1 2.8-1.7L8 13Z"/>`);
-    case "selection": return svg(html`<path d="m6 6 4.15 11.8c.1.27.48.28.67 0L13 13l4.79-2c.28-.12.28-.52 0-.64L6 6Zm7.5 7.5L18 18"/>`);
-    case "rectangle": return svg(html`<rect x="4" y="4" width="16" height="16" rx="2"/>`);
-    case "diamond": return svg(html`<path d="m10.5 20.4-6.9-6.9a2.2 2.2 0 0 1 0-3l6.9-6.9a2.2 2.2 0 0 1 3 0l6.9 6.9a2.2 2.2 0 0 1 0 3l-6.9 6.9a2.2 2.2 0 0 1-3 0Z"/>`);
-    case "ellipse": return svg(html`<circle cx="12" cy="12" r="9"/>`);
-    case "arrow": return svg(html`<path d="M5 12h14m-4-4 4 4-4 4"/>`);
-    case "line": return svg(html`<path d="M5 12h14"/>`);
-    case "freedraw": return svg(html`<path d="m7.6 18.7 9.3-9.3a2.8 2.8 0 0 0-4-4l-9.3 9.3A4 4 0 0 0 2.5 17.5v2h2a4 4 0 0 0 3.1-.8ZM12 6.5l4 4"/>`);
-    case "text": return svg(html`<path d="M4 20h3m7 0h7M7 15h7M10 6h6L6 20m6-16 8 16"/>`);
-    case "eraser": return svg(html`<path d="M19 20H8.5l-4.2-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4L11.5 20M18 13.3 11.7 7"/>`);
-    case "menu": return svg(html`<path d="M4 6h16M4 12h16M4 18h16"/>`);
-    case "library": return svg(html`<path d="M3 19a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/>`);
-    case "undo": return svg(html`<path d="M9 13 5 9l4-4M5 9h11a4 4 0 0 1 0 8h-2"/>`);
-    case "redo": return svg(html`<path d="m15 13 4-4-4-4m4 4H8a4 4 0 0 0 0 8h2"/>`);
-    case "help": return svg(html`<circle cx="12" cy="12" r="9"/><path d="M12 17v.01M12 14a2 2 0 0 1 1.3-1.9A3 3 0 1 0 9 9"/>`);
-    case "more": return svg(html`<circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>`);
+    case "hand": return svgIcon(svg`<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 5.5v-2a1.5 1.5 0 1 1 3 0V12M14 5.5a1.5 1.5 0 0 1 3 0V12M17 7.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-4.8-2.7L3.7 13.3a1.5 1.5 0 0 1 2.8-1.7L8 13Z"/>`);
+    case "selection": return svgIcon(svg`<path d="m6 6 4.15 11.8c.1.27.48.28.67 0L13 13l4.79-2c.28-.12.28-.52 0-.64L6 6Zm7.5 7.5L18 18"/>`);
+    case "rectangle": return svgIcon(svg`<rect x="4" y="4" width="16" height="16" rx="2"/>`);
+    case "diamond": return svgIcon(svg`<path d="m10.5 20.4-6.9-6.9a2.2 2.2 0 0 1 0-3l6.9-6.9a2.2 2.2 0 0 1 3 0l6.9 6.9a2.2 2.2 0 0 1 0 3l-6.9 6.9a2.2 2.2 0 0 1-3 0Z"/>`);
+    case "ellipse": return svgIcon(svg`<circle cx="12" cy="12" r="9"/>`);
+    case "arrow": return svgIcon(svg`<path d="M5 12h14m-4-4 4 4-4 4"/>`);
+    case "line": return svgIcon(svg`<path d="M5 12h14"/>`);
+    case "freedraw": return svgIcon(svg`<path d="m7.6 18.7 9.3-9.3a2.8 2.8 0 0 0-4-4l-9.3 9.3A4 4 0 0 0 2.5 17.5v2h2a4 4 0 0 0 3.1-.8ZM12 6.5l4 4"/>`);
+    case "text": return svgIcon(svg`<path d="M4 20h3m7 0h7M7 15h7M10 6h6L6 20m6-16 8 16"/>`);
+    case "eraser": return svgIcon(svg`<path d="M19 20H8.5l-4.2-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4L11.5 20M18 13.3 11.7 7"/>`);
+    case "menu": return svgIcon(svg`<path d="M4 6h16M4 12h16M4 18h16"/>`);
+    case "library": return svgIcon(svg`<path d="M3 19a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/>`);
+    case "undo": return svgIcon(svg`<path d="M9 13 5 9l4-4M5 9h11a4 4 0 0 1 0 8h-2"/>`);
+    case "redo": return svgIcon(svg`<path d="m15 13 4-4-4-4m4 4H8a4 4 0 0 0 0 8h2"/>`);
+    case "help": return svgIcon(svg`<circle cx="12" cy="12" r="9"/><path d="M12 17v.01M12 14a2 2 0 0 1 1.3-1.9A3 3 0 1 0 9 9"/>`);
+    case "more": return svgIcon(svg`<circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>`);
   }
 };
 
