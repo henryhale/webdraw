@@ -397,39 +397,40 @@ kbd {
 
 .selected-shape-actions {
   display: grid;
-  width: 20.25rem;
+  width: 14.5rem;
   max-height: calc(100vh - 6rem);
   gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: .75rem;
   overflow: auto;
-  font-size: .875rem;
+  font-size: .75rem;
+  font-weight: 400;
 
   label { display: grid; gap: .6rem; }
-  input[type="color"] { width: 2rem; height: 2rem; padding: 2px; border: 0; border-radius: .375rem; background: var(--button-hover-bg); }
+  input[type="color"] { width: 1.5rem; height: 1.5rem; padding: 2px; border: 0; border-radius: .375rem; background: var(--button-hover-bg); }
   .color-palette { display: flex; align-items: center; gap: .45rem; }
   .color-swatch {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
     padding: 0;
     border: 0;
     border-radius: .4rem;
     background: var(--swatch, var(--color-surface-low));
   }
-  .color-swatch.transparent { color: var(--color-disabled); background: var(--color-surface-low); font-size: 1.2rem; }
+  .color-swatch.transparent { color: var(--color-disabled); background: var(--color-surface-low); font-size: .75rem; }
   .color-swatch.custom-color { margin-left: .35rem; padding: .15rem; background: var(--color-surface-low); }
   .segmented button {
     display: grid;
-    width: 3.25rem;
-    height: 3.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     place-items: center;
     border: 0;
-    border-radius: .65rem;
+    border-radius: .375rem;
     background: var(--color-surface-low);
-    font-size: 1rem;
+    font-size: .75rem;
   }
-  .segmented { display: flex; gap: .75rem; }
-  .segmented svg { width: 1.5rem; height: 1.5rem; }
-  .segmented button span[class^="stroke-width"] { display: block; width: 1rem; border-radius: 1rem; background: currentColor; }
+  .segmented { display: flex; gap: .375rem; }
+  .segmented svg { width: 1rem; height: 1rem; }
+  .segmented button span[class^="stroke-width"] { display: block; width: .8rem; border-radius: 1rem; background: currentColor; }
   .stroke-width-1 { height: 1px; }
   .stroke-width-2 { height: 2px; }
   .stroke-width-4 { height: 4px; }
@@ -437,20 +438,20 @@ kbd {
   .font-family button:nth-child(2) { font-family: Nunito, sans-serif; }
   .font-family button:nth-child(3), .font-family button:nth-child(4) { font-family: Cascadia, monospace; }
   .font-size button { font-family: Excalifont, Virgil, sans-serif; }
-  .text-left { text-align: left; padding-left: .9rem; }
+  .text-left { text-align: left; padding-left: .35rem; }
   .text-center { text-align: center; }
-  .text-right { text-align: right; padding-right: .9rem; }
+  .text-right { text-align: right; padding-right: .35rem; }
   .arrowheads-row { display: grid; gap: .5rem; }
   .arrowheads-row .segmented { gap: .3rem; flex-wrap: wrap; }
-  .arrowheads-row .segmented button { width: 2.45rem; height: 2.45rem; border-radius: .5rem; }
+  .arrowheads-row .segmented button { width: 1.5rem; height: 1.5rem; border-radius: .375rem; }
   button.selected { color: var(--color-on-primary-container); background: var(--color-surface-primary-container); box-shadow: inset 0 0 0 1px var(--button-active-border); }
   .range-row { display: flex; align-items: center; gap: .5rem; }
   .range-row input { width: 100%; accent-color: var(--color-primary); }
   .range-row output { min-width: 1.5rem; text-align: right; }
-  .action-row { display: flex; flex-wrap: wrap; gap: .75rem; }
-  .action-row button { min-height: 2.75rem; min-width: 2.75rem; padding: 0 .45rem; border: 0; border-radius: .65rem; background: var(--color-surface-low); }
+  .action-row { display: flex; flex-wrap: wrap; gap: .375rem; }
+  .action-row button { width: 1.5rem; height: 1.5rem; min-width: 1.5rem; min-height: 1.5rem; padding: 0; border: 0; border-radius: .375rem; background: var(--color-surface-low); }
   .action-row button:hover { background: var(--button-hover-bg); }
-  .action-row svg { width: 1.25rem; height: 1.25rem; }
+  .action-row svg { width: 1rem; height: 1rem; }
   .action-row .danger { color: #e03131; }
 }
 
@@ -672,15 +673,33 @@ kbd {
   .command-results button:hover, .command-close:hover { background: var(--button-hover-bg); }
 }
 
+.help-dialog { width: min(70rem, calc(100% - 2rem)); }
+
+.help-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.shortcut-section h3 { margin-top: 1rem; }
+
 .shortcut-grid {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: .5rem 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .55rem 1rem;
   align-items: center;
   font-size: .875rem;
 
-  span { display: flex; align-items: center; gap: .5rem; }
-  svg { width: 1rem; height: 1rem; }
+  .shortcut-label { min-width: 0; }
+  .shortcut-bindings { display: flex; max-width: 13rem; align-items: center; justify-content: flex-end; gap: .3rem; flex-wrap: wrap; }
+  .shortcut-binding { display: inline-flex; align-items: center; gap: .2rem; white-space: nowrap; }
+  small { color: var(--keybinding-color); font-size: .65rem; }
+  kbd { white-space: nowrap; }
+}
+
+@media (max-width: 900px) {
+  .help-shortcuts { grid-template-columns: 1fr; }
 }
 
 .layer-ui__wrapper__footer {

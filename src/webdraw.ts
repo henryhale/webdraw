@@ -15,6 +15,7 @@ import {
   newTextElement,
 } from "@excalidraw/element";
 import { icon, sloppinessIcon } from "./icons";
+import { SHORTCUT_GROUPS } from "./shortcuts";
 import type { Arrowhead, TextAlign, Tool, VerticalAlign, WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
 import { cursorForHandle, encodeSceneMetadata, normalizeBounds, rotatePoint, type Point, type ResizeHandle } from "./utils";
 import "./styles.scss";
@@ -431,10 +432,15 @@ export class WebDraw extends LitElement {
         <div class="Modal__background" @click=${close}></div>
         <div class="Modal__content help-dialog">
           <header><h2 id="help-title">Help</h2><button class="modal-close" @click=${close} aria-label="Close">${icon("close")}</button></header>
-          <h3>Tools</h3>
-          <div class="shortcut-grid">${TOOL_META.map(([tool, title, key]) => html`<span>${icon(tool)} ${title.split(" (")[0]}</span><kbd>${key || "H"}</kbd>`)}</div>
-          <h3>Editor</h3>
-          <div class="shortcut-grid"><span>Undo</span><kbd>Ctrl+Z</kbd><span>Redo</span><kbd>Ctrl+Shift+Z</kbd><span>Edit text / add label</span><kbd>Double-click</kbd><span>Delete selection</span><kbd>Delete</kbd><span>Find on canvas</span><kbd>Ctrl+F</kbd></div>
+          <div class="help-shortcuts">${SHORTCUT_GROUPS.map((group) => html`
+            <section class="shortcut-section">
+              <h3>${group.title}</h3>
+              <div class="shortcut-grid">${group.items.map((item) => html`
+                <span class="shortcut-label">${item.label}</span>
+                <span class="shortcut-bindings">${item.bindings.map((binding, index) => html`${index ? html`<small>or</small>` : nothing}<span class="shortcut-binding">${binding.map((key) => html`<kbd>${key}</kbd>`)}</span>`)}</span>
+              `)}</div>
+            </section>`)}
+          </div>
         </div>
       </div>`;
   }
