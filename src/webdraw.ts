@@ -88,7 +88,7 @@ export class WebDraw extends LitElement {
     croppingImageId: { state: true },
   };
 
-  theme: WebdrawTheme = "light";
+  theme: WebdrawTheme = "auto";
   viewModeEnabled = false;
   zenModeEnabled = false;
   gridModeEnabled = false;
@@ -158,6 +158,7 @@ export class WebDraw extends LitElement {
     this.addEventListener("keyup", this.onKeyUp);
     this.systemTheme = this.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)");
     this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
+    if (this.theme === "auto") this.strokeColor = this.systemTheme?.matches ? "#e3e3e8" : "#1b1b1f";
   }
 
   disconnectedCallback() {
@@ -1171,7 +1172,11 @@ export class WebDraw extends LitElement {
   private isDarkTheme() { return this.theme === "dark" || (this.theme === "auto" && !!this.systemTheme?.matches); }
   private setTheme(theme: WebdrawTheme) { this.theme = theme; this.strokeColor = this.isDarkTheme() ? "#e3e3e8" : "#1b1b1f"; this.requestUpdate(); }
   private toggleTheme = () => this.setTheme(this.isDarkTheme() ? "light" : "dark");
-  private onSystemThemeChange = () => { if (this.theme === "auto") { this.requestUpdate(); this.paint(); } };
+  private onSystemThemeChange = () => {
+    if (this.theme !== "auto") return;
+    if (this.strokeColor === "#1b1b1f" || this.strokeColor === "#e3e3e8") this.strokeColor = this.systemTheme?.matches ? "#e3e3e8" : "#1b1b1f";
+    this.requestUpdate(); this.paint();
+  };
   private confirmReset = () => {
     if (!this.elements.length || this.ownerDocument.defaultView?.confirm("This will clear the whole canvas. Are you sure?")) { this.resetScene(); this.menuOpen = false; }
   };
