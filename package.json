@@ -1,14 +1,32 @@
 {
   "name": "webdraw",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Excalidraw-compatible drawing editor as a framework-agnostic Lit web component",
+  "main": "./dist/webdraw.js",
+  "module": "./dist/webdraw.js",
+  "types": "./dist/webdraw.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/webdraw.d.ts",
+      "import": "./dist/webdraw.js"
+    },
+    "./style.css": "./dist/webdraw.css"
   },
-  "keywords": [],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build"
+  },
+  "keywords": [
+    "excalidraw",
+    "lit",
+    "web-component",
+    "whiteboard"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -19,6 +37,16 @@
   "packageManager": "pnpm@11.24.0",
   "type": "module",
   "dependencies": {
-    "lit": "^3.3.3"
+    "@excalidraw/common": "0.18.0-4e471c107",
+    "@excalidraw/element": "0.18.0-4e471c107",
+    "@excalidraw/math": "0.18.0-4e471c107",
+    "lit": "^3.3.3",
+    "perfect-freehand": "1.2.0",
+    "roughjs": "4.6.4"
+  },
+  "devDependencies": {
+    "sass": "1.51.0",
+    "typescript": "5.9.3",
+    "vite": "5.0.12"
   }
 }
