@@ -24,6 +24,24 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: Nunito;
+  src: url("./fonts/Nunito/Nunito-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Comic Shanns";
+  src: url("./fonts/ComicShanns/ComicShanns-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Cascadia;
+  src: url("./fonts/Cascadia/CascadiaCode-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+
 web-draw {
   display: block;
   min-width: 280px;
@@ -369,31 +387,70 @@ kbd {
 
 .scene-input, .image-input { display: none; }
 
+.picker-proxy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .selected-shape-actions {
   display: grid;
-  width: 12.5rem;
-  gap: .75rem;
-  padding: .75rem;
-  font-size: .75rem;
+  width: 20.25rem;
+  max-height: calc(100vh - 6rem);
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  overflow: auto;
+  font-size: .875rem;
 
-  label { display: grid; gap: .35rem; }
+  label { display: grid; gap: .6rem; }
   input[type="color"] { width: 2rem; height: 2rem; padding: 2px; border: 0; border-radius: .375rem; background: var(--button-hover-bg); }
-  .color-row { display: flex; gap: .375rem; }
-  .color-row button, .segmented button {
-    width: 2rem;
-    height: 2rem;
+  .color-palette { display: flex; align-items: center; gap: .45rem; }
+  .color-swatch {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
     border: 0;
-    border-radius: .375rem;
-    background: var(--color-surface-low);
+    border-radius: .4rem;
+    background: var(--swatch, var(--color-surface-low));
   }
-  .segmented { display: flex; gap: .375rem; }
+  .color-swatch.transparent { color: var(--color-disabled); background: var(--color-surface-low); font-size: 1.2rem; }
+  .color-swatch.custom-color { margin-left: .35rem; padding: .15rem; background: var(--color-surface-low); }
+  .segmented button {
+    display: grid;
+    width: 3.25rem;
+    height: 3.25rem;
+    place-items: center;
+    border: 0;
+    border-radius: .65rem;
+    background: var(--color-surface-low);
+    font-size: 1rem;
+  }
+  .segmented { display: flex; gap: .75rem; }
+  .segmented svg { width: 1.5rem; height: 1.5rem; }
+  .segmented button span[class^="stroke-width"] { display: block; width: 1rem; border-radius: 1rem; background: currentColor; }
+  .stroke-width-1 { height: 1px; }
+  .stroke-width-2 { height: 2px; }
+  .stroke-width-4 { height: 4px; }
+  .font-family button:first-child { font-family: Excalifont, Virgil, sans-serif; }
+  .font-family button:nth-child(2) { font-family: Nunito, sans-serif; }
+  .font-family button:nth-child(3), .font-family button:nth-child(4) { font-family: Cascadia, monospace; }
+  .font-size button { font-family: Excalifont, Virgil, sans-serif; }
+  .text-left { text-align: left; padding-left: .9rem; }
+  .text-center { text-align: center; }
+  .text-right { text-align: right; padding-right: .9rem; }
+  .arrowheads-row { display: grid; gap: .5rem; }
+  .arrowheads-row .segmented { gap: .3rem; flex-wrap: wrap; }
+  .arrowheads-row .segmented button { width: 2.45rem; height: 2.45rem; border-radius: .5rem; }
   button.selected { color: var(--color-on-primary-container); background: var(--color-surface-primary-container); box-shadow: inset 0 0 0 1px var(--button-active-border); }
   .range-row { display: flex; align-items: center; gap: .5rem; }
   .range-row input { width: 100%; accent-color: var(--color-primary); }
   .range-row output { min-width: 1.5rem; text-align: right; }
-  .action-row { display: flex; flex-wrap: wrap; gap: .25rem; }
-  .action-row button { min-height: 1.75rem; padding: 0 .45rem; border: 0; border-radius: .375rem; background: var(--color-surface-low); }
+  .action-row { display: flex; flex-wrap: wrap; gap: .75rem; }
+  .action-row button { min-height: 2.75rem; min-width: 2.75rem; padding: 0 .45rem; border: 0; border-radius: .65rem; background: var(--color-surface-low); }
   .action-row button:hover { background: var(--button-hover-bg); }
+  .action-row svg { width: 1.25rem; height: 1.25rem; }
   .action-row .danger { color: #e03131; }
 }
 
@@ -592,6 +649,27 @@ kbd {
   span { color: var(--keybinding-color); font-size: .7rem; }
   strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; }
   p { margin: .75rem; color: var(--keybinding-color); font-size: .875rem; }
+}
+
+.command-menu {
+  position: absolute;
+  z-index: 50;
+  top: 1rem;
+  left: 50%;
+  display: grid;
+  width: min(32rem, calc(100% - 2rem));
+  grid-template-columns: 1.25rem 1fr 2rem;
+  align-items: center;
+  gap: .5rem;
+  padding: .65rem;
+  transform: translateX(-50%);
+
+  > svg, .command-close svg { width: 1rem; height: 1rem; }
+  > input { height: 2rem; border: 0; color: inherit; background: transparent; }
+  .command-close { display: grid; width: 2rem; height: 2rem; padding: 0; place-items: center; border: 0; border-radius: .375rem; background: transparent; }
+  .command-results { grid-column: 1 / -1; display: grid; max-height: 20rem; overflow: auto; border-top: 1px solid var(--default-border-color); }
+  .command-results button { min-height: 2.4rem; padding: 0 .5rem; border: 0; border-radius: .375rem; color: inherit; background: transparent; text-align: left; }
+  .command-results button:hover, .command-close:hover { background: var(--button-hover-bg); }
 }
 
 .shortcut-grid {

@@ -1,9 +1,10 @@
-import { LitElement, html, svg, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, nothing, type PropertyValues } from "lit";
 import rough from "roughjs/bin/rough";
 import { getStroke } from "perfect-freehand";
 import pngText from "png-chunk-text";
 import encodePng from "png-chunks-encode";
 import extractPng from "png-chunks-extract";
+import { FONT_FAMILY, ROUNDNESS } from "@excalidraw/common";
 import {
   newElement,
   newEmbeddableElement,
@@ -13,45 +14,17 @@ import {
   newLinearElement,
   newTextElement,
 } from "@excalidraw/element";
-import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
+import { icon, sloppinessIcon } from "./icons";
+import type { Arrowhead, TextAlign, Tool, VerticalAlign, WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
+import { cursorForHandle, encodeSceneMetadata, normalizeBounds, rotatePoint, type Point, type ResizeHandle } from "./utils";
 import "./styles.scss";
 
-export type WebdrawElement = NonDeletedExcalidrawElement;
-export type WebdrawTheme = "light" | "dark";
+export type { WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
 
-export interface WebdrawInitialData {
-  elements?: readonly WebdrawElement[];
-  appState?: {
-    theme?: WebdrawTheme;
-    viewBackgroundColor?: string;
-    zoom?: number;
-    scrollX?: number;
-    scrollY?: number;
-  };
-}
-
-type Tool =
-  | "hand"
-  | "selection"
-  | "rectangle"
-  | "diamond"
-  | "ellipse"
-  | "arrow"
-  | "line"
-  | "freedraw"
-  | "text"
-  | "eraser"
-  | "frame"
-  | "image"
-  | "embeddable"
-  | "stickynote"
-  | "laser";
-type Point = { x: number; y: number };
 type MutableElement = WebdrawElement & Record<string, any>;
-type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-type TextEdit = Point & { elementId?: string; containerId?: string; fontSize: number; width?: number };
+type TextEdit = Point & { elementId?: string; containerId?: string; fontSize: number; fontFamily: number; textAlign: TextAlign; verticalAlign: VerticalAlign; width?: number };
 type Drag = {
-  mode: "draw" | "move" | "pan" | "select" | "erase" | "resize" | "rotate";
+  mode: "draw" | "move" | "pan" | "select" | "erase" | "resize" | "rotate" | "point" | "crop";
   start: Point;
   last: Point;
   draftId?: string;
@@ -61,6 +34,8 @@ type Drag = {
   handle?: ResizeHandle;
   element?: MutableElement;
   startAngle?: number;
+  pointIndex?: number;
+  multiPoint?: boolean;
 };
 
 const TOOL_META: readonly [Tool, string, string][] = [
@@ -76,72 +51,11 @@ const TOOL_META: readonly [Tool, string, string][] = [
   ["eraser", "Eraser (E or 0)", "0"],
 ];
 
-const svgIcon = (body: TemplateResult, viewBox = "0 0 24 24") => svg`
-  <svg aria-hidden="true" focusable="false" viewBox=${viewBox} fill="none"
-    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    ${body}
-  </svg>`;
-
-const icon = (name: Tool | "menu" | "library" | "undo" | "redo" | "help" | "more" | "search" | "export" | "close") => {
-  switch (name) {
-    case "hand": return svgIcon(svg`<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 5.5v-2a1.5 1.5 0 1 1 3 0V12M14 5.5a1.5 1.5 0 0 1 3 0V12M17 7.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-4.8-2.7L3.7 13.3a1.5 1.5 0 0 1 2.8-1.7L8 13Z"/>`);
-    case "selection": return svgIcon(svg`<path d="m6 6 4.15 11.8c.1.27.48.28.67 0L13 13l4.79-2c.28-.12.28-.52 0-.64L6 6Zm7.5 7.5L18 18"/>`);
-    case "rectangle": return svgIcon(svg`<rect x="4" y="4" width="16" height="16" rx="2"/>`);
-    case "diamond": return svgIcon(svg`<path d="m10.5 20.4-6.9-6.9a2.2 2.2 0 0 1 0-3l6.9-6.9a2.2 2.2 0 0 1 3 0l6.9 6.9a2.2 2.2 0 0 1 0 3l-6.9 6.9a2.2 2.2 0 0 1-3 0Z"/>`);
-    case "ellipse": return svgIcon(svg`<circle cx="12" cy="12" r="9"/>`);
-    case "arrow": return svgIcon(svg`<path d="M5 12h14m-4-4 4 4-4 4"/>`);
-    case "line": return svgIcon(svg`<path d="M5 12h14"/>`);
-    case "freedraw": return svgIcon(svg`<path d="m7.6 18.7 9.3-9.3a2.8 2.8 0 0 0-4-4l-9.3 9.3A4 4 0 0 0 2.5 17.5v2h2a4 4 0 0 0 3.1-.8ZM12 6.5l4 4"/>`);
-    case "text": return svgIcon(svg`<path d="M4 20h3m7 0h7M7 15h7M10 6h6L6 20m6-16 8 16"/>`);
-    case "eraser": return svgIcon(svg`<path d="M19 20H8.5l-4.2-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4L11.5 20M18 13.3 11.7 7"/>`);
-    case "frame": return svgIcon(svg`<path d="M7 3H3v4M17 3h4v4M21 17v4h-4M7 21H3v-4"/>`);
-    case "image": return svgIcon(svg`<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 2-2 5 4"/>`);
-    case "embeddable": return svgIcon(svg`<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9-3 3 3 3m4-6 3 3-3 3"/>`);
-    case "stickynote": return svgIcon(svg`<path d="M5 3h14a2 2 0 0 1 2 2v11l-5 5H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M16 21v-5h5"/>`);
-    case "laser": return svgIcon(svg`<path d="m5 19 14-14M8 5l1-3m5 4 3-1m2 5 3 1M5 14l-3 1"/>`);
-    case "menu": return svgIcon(svg`<path d="M4 6h16M4 12h16M4 18h16"/>`);
-    case "library": return svgIcon(svg`<path d="M3 19a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0 9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/>`);
-    case "undo": return svgIcon(svg`<path d="M9 13 5 9l4-4M5 9h11a4 4 0 0 1 0 8h-2"/>`);
-    case "redo": return svgIcon(svg`<path d="m15 13 4-4-4-4m4 4H8a4 4 0 0 0 0 8h2"/>`);
-    case "help": return svgIcon(svg`<circle cx="12" cy="12" r="9"/><path d="M12 17v.01M12 14a2 2 0 0 1 1.3-1.9A3 3 0 1 0 9 9"/>`);
-    case "more": return svgIcon(svg`<circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>`);
-    case "search": return svgIcon(svg`<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>`);
-    case "export": return svgIcon(svg`<path d="M12 3v12m-4-4 4 4 4-4M5 20h14"/>`);
-    case "close": return svgIcon(svg`<path d="m6 6 12 12M18 6 6 18"/>`);
-  }
-};
-
-const normalizeBounds = (start: Point, end: Point) => ({
-  x: Math.min(start.x, end.x),
-  y: Math.min(start.y, end.y),
-  width: Math.abs(end.x - start.x),
-  height: Math.abs(end.y - start.y),
-});
-
-const rotatePoint = (point: Point, center: Point, angle: number): Point => {
-  const cos = Math.cos(angle), sin = Math.sin(angle), x = point.x - center.x, y = point.y - center.y;
-  return { x: center.x + x * cos - y * sin, y: center.y + x * sin + y * cos };
-};
-
-const encodeSceneMetadata = (scene: string) => {
-  let encoded = "";
-  for (const byte of new TextEncoder().encode(scene)) encoded += String.fromCharCode(byte);
-  return JSON.stringify({ version: "1", encoding: "bstring", compressed: false, encoded });
-};
-
-const cursorForHandle = (handle: ResizeHandle, angle = 0) => {
-  const direction = { e: 0, w: 0, se: 1, nw: 1, s: 2, n: 2, sw: 3, ne: 3 }[handle];
-  return ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"][((direction + Math.round(angle / (Math.PI / 4))) % 4 + 4) % 4];
-};
-
-if (import.meta.env.DEV) {
-  const bounds = normalizeBounds({ x: 10, y: 20 }, { x: 2, y: 5 });
-  console.assert(bounds.x === 2 && bounds.y === 5 && bounds.width === 8 && bounds.height === 15);
-  const rotated = rotatePoint({ x: 1, y: 0 }, { x: 0, y: 0 }, Math.PI / 2);
-  console.assert(Math.abs(rotated.x) < 1e-10 && Math.abs(rotated.y - 1) < 1e-10);
-  console.assert(JSON.parse(encodeSceneMetadata("✓")).encoded.length === 3);
-  console.assert(cursorForHandle("e") === "ew-resize" && cursorForHandle("e", Math.PI / 2) === "ns-resize");
-}
+const STROKE_COLORS = ["#1b1b1f", "#e03131", "#2f9e44", "#1971c2", "#f08c00"];
+const BACKGROUND_COLORS = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffec99"];
+const NOTE_COLORS = ["#fff3bf", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffe066"];
+const DARK_STROKE_COLORS = ["#e3e3e8", "#ff8787", "#40c057", "#4dabf7", "#e67700"];
+const DARK_BACKGROUND_COLORS = ["transparent", "#5c2b29", "#1b5e20", "#194a66", "#5c3d00"];
 
 export class WebDraw extends LitElement {
   static properties = {
@@ -161,6 +75,11 @@ export class WebDraw extends LitElement {
     editingText: { state: true },
     selectedIds: { state: true },
     contextMenu: { state: true },
+    toolLocked: { state: true },
+    propertiesOpen: { state: true },
+    editingLinearId: { state: true },
+    snapToObjects: { state: true },
+    croppingImageId: { state: true },
   };
 
   theme: WebdrawTheme = "light";
@@ -174,11 +93,16 @@ export class WebDraw extends LitElement {
   menuOpen = false;
   moreToolsOpen = false;
   libraryOpen = false;
-  dialog: "export" | "help" | "search" | null = null;
+  dialog: "export" | "help" | "search" | "commands" | null = null;
   searchQuery = "";
   editingText: TextEdit | null = null;
   selectedIds = new Set<string>();
   contextMenu: Point | null = null;
+  toolLocked = false;
+  propertiesOpen = true;
+  editingLinearId: string | null = null;
+  snapToObjects = false;
+  croppingImageId: string | null = null;
 
   private canvas?: HTMLCanvasElement;
   private observer?: ResizeObserver;
@@ -195,6 +119,16 @@ export class WebDraw extends LitElement {
   private fillStyle: "hachure" | "cross-hatch" | "solid" | "zigzag" = "hachure";
   private strokeStyle: "solid" | "dashed" | "dotted" = "solid";
   private opacity = 100;
+  private fontFamily = FONT_FAMILY.Excalifont;
+  private fontSize = 20;
+  private textAlign: TextAlign = "left";
+  private verticalAlign: VerticalAlign = "top";
+  private arrowType: "sharp" | "round" | "elbow" = "round";
+  private startArrowhead: Arrowhead = null;
+  private endArrowhead: Arrowhead = "arrow";
+  private spacePressed = false;
+  private pendingLinearId: string | null = null;
+  private styleClipboard: Record<string, unknown> | null = null;
   private textDraft = "";
   private exportScale = 1;
   private exportBackground = true;
@@ -212,10 +146,14 @@ export class WebDraw extends LitElement {
     this.tabIndex = 0;
     this.setAttribute("role", "application");
     this.setAttribute("aria-label", "Excalidraw canvas");
+    this.addEventListener("keydown", this.onKeyDown);
+    this.addEventListener("keyup", this.onKeyUp);
   }
 
   disconnectedCallback() {
     this.observer?.disconnect();
+    this.removeEventListener("keydown", this.onKeyDown);
+    this.removeEventListener("keyup", this.onKeyUp);
     super.disconnectedCallback();
   }
 
@@ -247,6 +185,7 @@ export class WebDraw extends LitElement {
       if (area) { area.style.height = "0"; area.style.height = `${area.scrollHeight}px`; }
     }
     if (this.dialog === "search") this.querySelector<HTMLInputElement>(".search-menu input")?.focus();
+    if (this.dialog === "commands") this.querySelector<HTMLInputElement>(".command-menu input")?.focus();
   }
 
   getSceneElements(): readonly WebdrawElement[] { return this.elements; }
@@ -294,7 +233,7 @@ export class WebDraw extends LitElement {
     const cursor = this.viewModeEnabled ? "default" : this.tool === "hand" ? "grab" : this.tool === "selection" ? "default" : this.tool === "text" ? "text" : "crosshair";
     return html`
       <div class="excalidraw ${this.theme === "dark" ? "theme--dark" : ""}" dir="ltr"
-        style=${`--canvas-background: ${this.canvasColor}; --canvas-cursor: ${cursor}`} @keydown=${this.onKeyDown}>
+        style=${`--canvas-background: ${this.canvasColor}; --canvas-cursor: ${cursor}`}>
         <canvas class="excalidraw__canvas interactive" aria-label="Drawing canvas"
           @pointerdown=${this.onPointerDown} @pointermove=${this.onPointerMove}
           @pointerup=${this.onPointerUp} @pointercancel=${this.onPointerUp}
@@ -316,7 +255,7 @@ export class WebDraw extends LitElement {
                     <span class="ToolIcon__icon">${icon("menu")}</span>
                   </button>
                   ${this.menuOpen ? this.renderMenu() : nothing}
-                  ${this.renderProperties()}
+                  ${this.propertiesOpen ? this.renderProperties() : nothing}
                 </div>
 
                 ${this.viewModeEnabled ? nothing : html`
@@ -324,6 +263,10 @@ export class WebDraw extends LitElement {
                     <div class="App-toolbar-container">
                       <div class="Island App-toolbar" data-viewport-ui="top">
                         <div class="Stack Stack_horizontal toolbar-row">
+                          <button class="ToolIcon ToolIcon_type_toggle ${this.toolLocked ? "ToolIcon--checked" : ""}"
+                            title="Keep selected tool active (Q)" aria-label="Keep selected tool active" aria-pressed=${this.toolLocked}
+                            @click=${() => this.toolLocked = !this.toolLocked}><span class="ToolIcon__icon">${icon("lock")}</span></button>
+                          <span class="App-toolbar__divider"></span>
                           ${TOOL_META.map((tool) => this.renderTool(tool))}
                           <span class="App-toolbar__divider"></span>
                           <button class="ToolIcon ToolIcon_type_toggle ${this.moreToolsOpen ? "ToolIcon--checked" : ""}"
@@ -375,12 +318,14 @@ export class WebDraw extends LitElement {
         ${this.contextMenu ? this.renderContextMenu() : nothing}
         ${this.editingText ? html`
           <textarea class="webdraw-text-editor" aria-label="Text" placeholder="Type something" rows="1" .value=${this.textDraft}
-            style=${`left:${this.editingText.x * this.zoom + this.pan.x}px;top:${this.editingText.y * this.zoom + this.pan.y}px;font-size:${this.editingText.fontSize * this.zoom}px;${this.editingText.width ? `width:${Math.max(64, this.editingText.width * this.zoom)}px` : ""}`}
+            style=${`left:${this.editingText.x * this.zoom + this.pan.x}px;top:${this.editingText.y * this.zoom + this.pan.y}px;font-size:${this.editingText.fontSize * this.zoom}px;font-family:${this.fontName(this.editingText.fontFamily)};text-align:${this.editingText.textAlign};${this.editingText.width ? `width:${Math.max(64, this.editingText.width * this.zoom)}px` : ""}`}
             @input=${this.onTextInput}
             @pointerdown=${(event: PointerEvent) => event.stopPropagation()}
             @keydown=${this.onTextKeyDown} @blur=${this.commitText}></textarea>` : nothing}
         <input class="scene-input" type="file" accept="application/json,.excalidraw" @change=${this.openScene} />
         <input class="image-input" type="file" accept="image/*" @change=${this.openImage} />
+        <input class="picker-proxy stroke-picker-proxy" type="color" .value=${this.strokeColor} @input=${(event: InputEvent) => this.setStrokeColor((event.target as HTMLInputElement).value)} />
+        <input class="picker-proxy background-picker-proxy" type="color" .value=${this.backgroundColor === "transparent" ? "#ffffff" : this.backgroundColor} @input=${(event: InputEvent) => this.setBackground((event.target as HTMLInputElement).value)} />
       </div>`;
   }
 
@@ -396,12 +341,8 @@ export class WebDraw extends LitElement {
         <span class="dropdown-separator"></span>
         <button role="menuitem" @click=${this.confirmReset}>Reset the canvas</button>
         <span class="dropdown-separator"></span>
-        <div class="dropdown-heading">Excalidraw links</div>
-        <a role="menuitem" href="https://plus.excalidraw.com" target="_blank" rel="noopener">Excalidraw+</a>
-        <a role="menuitem" href="https://github.com/excalidraw/excalidraw" target="_blank" rel="noopener">GitHub</a>
-        <a role="menuitem" href="https://discord.gg/UexuTaE" target="_blank" rel="noopener">Discord</a>
-        <span class="dropdown-separator"></span>
         <button role="menuitemcheckbox" aria-checked=${this.gridModeEnabled} @click=${() => this.gridModeEnabled = !this.gridModeEnabled}>Grid mode <span>${this.gridModeEnabled ? "✓" : ""}</span></button>
+        <button role="menuitemcheckbox" aria-checked=${this.snapToObjects} @click=${() => this.snapToObjects = !this.snapToObjects}>Snap to objects <span>${this.snapToObjects ? "✓" : ""}</span></button>
         <button role="menuitem" @click=${this.toggleTheme}>${this.theme === "dark" ? "Light" : "Dark"} mode</button>
         <label class="canvas-color">Canvas background <input type="color" .value=${this.canvasColor} @input=${this.onCanvasColor}></label>
       </div>`;
@@ -417,7 +358,7 @@ export class WebDraw extends LitElement {
         <button role="menuitem" @click=${() => { this.querySelector<HTMLInputElement>(".image-input")?.click(); this.moreToolsOpen = false; }}>${icon("image")}<span>Insert image</span><kbd>9</kbd></button>
         ${item("frame", "Frame tool", "F")}
         ${item("embeddable", "Web Embed")}
-        ${item("stickynote", "Sticky note")}
+        ${item("stickynote", "Sticky note", "N")}
         ${item("laser", "Laser pointer", "K")}
       </div>`;
   }
@@ -470,6 +411,21 @@ export class WebDraw extends LitElement {
           ${query ? html`<div class="search-results">${results.length ? results.map((item) => html`<button @click=${() => this.focusElement(item)}><span>${item.type === "frame" ? "Frame" : "Text"}</span><strong>${item.type === "frame" ? ((item as MutableElement).name ?? "Frame") : (item as MutableElement).text}</strong></button>`) : html`<p>No matches found...</p>`}</div>` : nothing}
         </div>`;
     }
+    if (this.dialog === "commands") {
+      const run = (action: () => void) => { action(); this.dialog = null; this.searchQuery = ""; };
+      const commands = [
+        ["Export image", () => this.dialog = "export"], ["Find on canvas", () => this.dialog = "search"],
+        ["Toggle grid", () => this.gridModeEnabled = !this.gridModeEnabled], ["Toggle zen mode", () => this.zenModeEnabled = !this.zenModeEnabled],
+        ["Toggle light/dark theme", this.toggleTheme], ["Zoom to fit all elements", () => this.fitElements(this.elements)],
+        ["Reset zoom", () => this.setZoom(1)], ["Reset the canvas", this.confirmReset],
+      ] as const;
+      const query = this.searchQuery.toLowerCase();
+      return html`<div class="command-menu Island" role="dialog" aria-label="Command palette">
+        ${icon("search")}<input type="search" placeholder="Search commands..." .value=${this.searchQuery} @input=${(event: InputEvent) => this.searchQuery = (event.target as HTMLInputElement).value} @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") this.dialog = null; }}>
+        <button class="command-close" aria-label="Close" @click=${close}>${icon("close")}</button>
+        <div class="command-results">${commands.filter(([label]) => label.toLowerCase().includes(query)).map(([label, action]) => html`<button @click=${() => run(action)}>${label}</button>`)}</div>
+      </div>`;
+    }
     return html`
       <div class="Modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
         <div class="Modal__background" @click=${close}></div>
@@ -504,28 +460,69 @@ export class WebDraw extends LitElement {
 
   private renderProperties() {
     if (this.viewModeEnabled || (this.tool === "selection" && !this.selectedIds.size) || this.tool === "hand" || this.tool === "eraser") return nothing;
+    const selected = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
+    const sticky = !!selected?.customData?.webdrawSticky || this.tool === "stickynote";
+    const textOnly = selected?.type === "text" || this.tool === "text";
+    const text = textOnly || sticky || !!(selected && this.boundLabel(selected));
+    const linear = selected?.type === "arrow" || this.tool === "arrow";
     const locked = this.elements.some((item) => this.selectedIds.has(item.id) && item.locked);
+    const palette = (colors: string[], current: string, set: (color: string) => void, allowTransparent = false) => html`
+      <span class="color-palette">
+        ${allowTransparent ? html`<button class="color-swatch transparent ${current === "transparent" ? "selected" : ""}" title="Transparent" aria-label="Transparent" @click=${() => set("transparent")}>×</button>` : nothing}
+        ${colors.filter((color) => color !== "transparent").map((color) => html`<button class="color-swatch ${current === color ? "selected" : ""}" style=${`--swatch:${color}`} title=${color} aria-label=${color} @click=${() => set(color)}></button>`)}
+        <input class="color-swatch custom-color" type="color" .value=${current === "transparent" ? "#ffffff" : current} aria-label="Custom color" @input=${(event: InputEvent) => set((event.target as HTMLInputElement).value)}>
+      </span>`;
     return html`
       <div class="Island selected-shape-actions">
-        <label>Stroke <input type="color" .value=${this.strokeColor} @input=${this.onStrokeColor}></label>
-        <label>Background <span class="color-row"><button class=${this.backgroundColor === "transparent" ? "selected" : ""} @click=${() => this.setBackground("transparent")}>×</button><input type="color" value="#a5d8ff" @input=${(event: InputEvent) => this.setBackground((event.target as HTMLInputElement).value)}></span></label>
-        <label>Fill <span class="segmented wide">${(["hachure", "cross-hatch", "solid"] as const).map((style) => html`<button title=${style} class=${this.fillStyle === style ? "selected" : ""} @click=${() => this.setFillStyle(style)}>${style === "hachure" ? "╱" : style === "cross-hatch" ? "╳" : "■"}</button>`)}</span></label>
-        <label>Stroke width <span class="segmented">${[1, 2, 4].map((width) => html`<button class=${this.strokeWidth === width ? "selected" : ""} @click=${() => this.setStrokeWidth(width)}>${width}</button>`)}</span></label>
-        <label>Stroke style <span class="segmented wide">${(["solid", "dashed", "dotted"] as const).map((style) => html`<button title=${style} class=${this.strokeStyle === style ? "selected" : ""} @click=${() => this.setStrokeStyle(style)}>${style === "solid" ? "━" : style === "dashed" ? "┅" : "┈"}</button>`)}</span></label>
-        <label>Sloppiness <span class="segmented">${[0, 1, 2].map((value) => html`<button class=${this.roughness === value ? "selected" : ""} @click=${() => this.setRoughness(value)}>${value + 1}</button>`)}</span></label>
-        <label>Opacity <span class="range-row"><input type="range" min="0" max="100" .value=${String(this.opacity)} @change=${this.onOpacity}><output>${this.opacity}</output></span></label>
+        <label>${sticky ? "Text color" : "Stroke"}${palette(this.theme === "dark" ? DARK_STROKE_COLORS : STROKE_COLORS, this.strokeColor, this.setStrokeColor)}</label>
+        ${textOnly ? nothing : html`<label>Background${palette(sticky ? (this.theme === "dark" ? DARK_BACKGROUND_COLORS.slice(1) : NOTE_COLORS) : (this.theme === "dark" ? DARK_BACKGROUND_COLORS : BACKGROUND_COLORS), this.backgroundColor, this.setBackground, !sticky)}</label>`}
+        ${textOnly || sticky || linear ? nothing : html`
+          <label>Fill <span class="segmented wide">${(["hachure", "cross-hatch", "solid"] as const).map((style) => html`<button title=${style} class=${this.fillStyle === style ? "selected" : ""} @click=${() => this.setFillStyle(style)}>${style === "hachure" ? "╱" : style === "cross-hatch" ? "╳" : "■"}</button>`)}</span></label>`}
+        ${textOnly || sticky ? nothing : html`
+          <label>Stroke width <span class="segmented">${[1, 2, 4].map((width) => html`<button class=${this.strokeWidth === width ? "selected" : ""} @click=${() => this.setStrokeWidth(width)} aria-label=${`Stroke width ${width}`}><span class=${`stroke-width-${width}`}></span></button>`)}</span></label>
+          <label>Stroke style <span class="segmented wide">${(["solid", "dashed", "dotted"] as const).map((style) => html`<button title=${style} class=${this.strokeStyle === style ? "selected" : ""} @click=${() => this.setStrokeStyle(style)}>${style === "solid" ? "━" : style === "dashed" ? "┅" : "┈"}</button>`)}</span></label>`}
+        ${textOnly ? nothing : html`<label>Sloppiness <span class="segmented">${[0, 1, 2].map((value) => html`<button title=${["Architect", "Artist", "Cartoonist"][value]} aria-label=${`Sloppiness ${value + 1}`} class=${this.roughness === value ? "selected" : ""} @click=${() => this.setRoughness(value)}>${sloppinessIcon(value)}</button>`)}</span></label>`}
+        ${sticky ? html`<label>Edges <span class="segmented">${[false, true].map((round) => html`<button class=${(selected?.customData?.webdrawRound !== false) === round ? "selected" : ""} title=${round ? "Round" : "Sharp"} @click=${() => this.setStickyRound(round)}>${round ? "╭" : "⌜"}</button>`)}</span></label>` : nothing}
+        ${linear ? html`
+          <label>Arrow type <span class="segmented">${(["sharp", "round", "elbow"] as const).map((type) => html`<button class=${this.arrowType === type ? "selected" : ""} title=${type} @click=${() => this.setArrowType(type)}>${type === "sharp" ? "↗" : type === "round" ? "↷" : "↱"}</button>`)}</span></label>
+          <label>Arrowheads <span class="arrowheads-row"><span class="segmented">${([null, "arrow", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.startArrowhead === head ? "selected" : ""} title=${`Start ${head ?? "none"}`} @click=${() => this.setArrowhead("start", head)}>${head === null ? "×–" : head === "bar" ? "|–" : "←"}</button>`)}</span><span class="segmented">${([null, "arrow", "triangle", "circle", "diamond", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.endArrowhead === head ? "selected" : ""} title=${`End ${head ?? "none"}`} @click=${() => this.setArrowhead("end", head)}>${head === null ? "–×" : head === "triangle" ? "▷" : head === "circle" ? "–○" : head === "diamond" ? "–◇" : head === "bar" ? "–|" : "→"}</button>`)}</span></span></label>` : nothing}
+        ${text ? html`
+          <label>Font family <span class="segmented font-family">${([[FONT_FAMILY.Excalifont, "✎", "Hand-drawn"], [FONT_FAMILY.Nunito, "A", "Normal"], [FONT_FAMILY["Comic Shanns"], "‹/›", "Code"], [FONT_FAMILY.Cascadia, "A", "Cascadia"]] as const).map(([family, mark, title]) => html`<button class=${this.fontFamily === family ? "selected" : ""} title=${title} @click=${() => this.setFontFamily(family)}>${mark}</button>`)}</span></label>
+          <label>Font size <span class="segmented font-size">${([[16, "S"], [20, "M"], [28, "L"], [36, "XL"]] as const).map(([size, label]) => html`<button class=${this.fontSize === size ? "selected" : ""} @click=${() => this.setFontSize(size)}>${label}</button>`)}</span></label>
+          <label>Text align <span class="segmented">${(["left", "center", "right"] as const).map((align) => html`<button class="text-${align} ${this.textAlign === align ? "selected" : ""}" title=${align} @click=${() => this.setTextAlign(align)}>≡</button>`)}</span></label>
+          ${sticky ? html`<label>Vertical align <span class="segmented">${(["top", "middle", "bottom"] as const).map((align) => html`<button class=${this.verticalAlign === align ? "selected" : ""} title=${align} @click=${() => this.setVerticalAlign(align)}>${align === "top" ? "⊤" : align === "middle" ? "⊢" : "⊥"}</button>`)}</span></label>` : nothing}` : nothing}
+        <label>Opacity <span class="range-row"><input type="range" min="0" max="100" .value=${String(this.opacity)} @input=${this.onOpacity}><output>${this.opacity}</output></span></label>
         ${this.selectedIds.size ? html`
-          <label>Actions <span class="action-row"><button @click=${this.duplicateSelected}>Duplicate</button><button @click=${this.sendBackward}>↓</button><button @click=${this.bringForward}>↑</button><button @click=${() => this.updateSelected({ locked: !locked })}>${locked ? "Unlock" : "Lock"}</button><button class="danger" @click=${this.deleteSelected}>Delete</button></span></label>` : nothing}
+          <label>Layers <span class="action-row icon-actions"><button title="Send to back" @click=${this.sendToBack}>${icon("sendBack")}</button><button title="Send backward" @click=${this.sendBackward}>${icon("sendBackward")}</button><button title="Bring forward" @click=${this.bringForward}>${icon("bringForward")}</button><button title="Bring to front" @click=${this.bringToFront}>${icon("bringFront")}</button></span></label>
+          <label>Actions <span class="action-row icon-actions"><button title="Duplicate" @click=${this.duplicateSelected}>${icon("duplicate")}</button><button class="danger" title="Delete" @click=${this.deleteSelected}>${icon("delete")}</button><button title="Add link" @click=${this.setSelectedLink}>${icon("link")}</button><button title=${locked ? "Unlock" : "Lock"} @click=${() => this.updateSelected({ locked: !locked })}>${icon("lock")}</button></span></label>` : nothing}
       </div>`;
   }
 
   private setTool(tool: Tool) {
     if (this.viewModeEnabled) return;
+    if (this.pendingLinearId) this.finishPendingLinear();
     this.tool = tool;
+    if (tool === "stickynote") this.backgroundColor = this.theme === "dark" ? "#5c3d00" : "#fff3bf";
     if (tool !== "selection") this.selectedIds = new Set();
     if (this.canvas) this.canvas.style.cursor = "";
     this.focus();
   }
+
+  private finishPendingLinear = () => {
+    if (!this.pendingLinearId) return;
+    const id = this.pendingLinearId, element = this.elements.find((item) => item.id === id) as MutableElement | undefined;
+    this.pendingLinearId = null;
+    if (!element) return;
+    const points = element.points.slice(0, -1).filter((point: number[], index: number, all: number[][]) => !index || point[0] !== all[index - 1][0] || point[1] !== all[index - 1][1]);
+    if (points.length < 2) this.elements = this.elements.filter((item) => item.id !== id);
+    else {
+      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
+      this.replaceElement({ ...element, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: element.version + 1 } as WebdrawElement);
+      this.selectedIds = new Set([id]);
+    }
+    if (!this.toolLocked) this.tool = "selection";
+    this.emitChange(); this.requestUpdate();
+  };
 
   private scenePoint(event: Pick<MouseEvent, "clientX" | "clientY">): Point {
     const rect = this.canvas!.getBoundingClientRect();
@@ -541,7 +538,7 @@ export class WebDraw extends LitElement {
     this.contextMenu = null;
     this.canvas!.setPointerCapture(event.pointerId);
     const point = this.scenePoint(event);
-    if (this.tool === "hand" || event.button === 1 || event.altKey) {
+    if (this.tool === "hand" || event.button === 1 || this.spacePressed) {
       this.drag = { mode: "pan", start: point, last: { x: event.clientX, y: event.clientY }, pan: { ...this.pan } };
       return;
     }
@@ -554,7 +551,30 @@ export class WebDraw extends LitElement {
       this.eraseAt(point);
       return;
     }
+    if ((this.tool === "line" || this.tool === "arrow") && this.pendingLinearId) {
+      const element = this.elements.find((item) => item.id === this.pendingLinearId) as MutableElement | undefined;
+      if (element) {
+        const nextPoint = [point.x - element.x, point.y - element.y], points = [...element.points.slice(0, -1), nextPoint, nextPoint];
+        this.replaceElement({ ...element, points, version: element.version + 1 } as WebdrawElement);
+        this.drag = { mode: "draw", start: point, last: point, draftId: element.id, checkpointed: true, multiPoint: true };
+        return;
+      }
+      this.pendingLinearId = null;
+    }
+    if (this.tool === "bucket") {
+      const hit = this.hitTest(point);
+      if (hit && !["text", "line", "arrow", "freedraw", "frame"].includes(hit.type)) {
+        this.selectedIds = new Set([hit.id]);
+        this.setBackground(this.backgroundColor === "transparent" ? (this.theme === "dark" ? "#194a66" : "#a5d8ff") : this.backgroundColor);
+      }
+      return;
+    }
     if (this.tool === "selection") {
+      const editedLinear = this.editingLinearId ? this.elements.find((item) => item.id === this.editingLinearId) as MutableElement | undefined : undefined;
+      if (editedLinear?.points) {
+        const pointIndex = editedLinear.points.findIndex(([x, y]: number[]) => Math.hypot(point.x - editedLinear.x - x, point.y - editedLinear.y - y) <= 10 / this.zoom);
+        if (pointIndex >= 0) { this.checkpoint(); this.drag = { mode: "point", start: point, last: point, element: structuredClone(editedLinear), pointIndex }; return; }
+      }
       const transform = this.selectionHandleAt(point);
       if (transform) {
         const element = structuredClone(this.elements.find((item) => this.selectedIds.has(item.id))!) as MutableElement;
@@ -562,11 +582,13 @@ export class WebDraw extends LitElement {
         const box = this.bounds(element), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         this.drag = transform === "rotate"
           ? { mode: "rotate", start: point, last: point, element, startAngle: Math.atan2(point.y - center.y, point.x - center.x) }
-          : { mode: "resize", start: point, last: point, element, handle: transform };
+          : { mode: element.id === this.croppingImageId ? "crop" : "resize", start: point, last: point, element, handle: transform };
         this.canvas!.style.cursor = transform === "rotate" ? "grabbing" : cursorForHandle(transform, element.angle);
         return;
       }
-      const hit = this.hitTest(point);
+      const hits = this.hitTestAll(point);
+      const targets = hits.map((item) => item.type === "text" && (item as MutableElement).containerId ? this.elements.find((candidate) => candidate.id === (item as MutableElement).containerId) ?? item : item).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
+      const hit = (event.ctrlKey || event.metaKey) ? targets.find((item) => !this.selectedIds.has(item.id)) ?? targets[0] : targets[0];
       if (hit) {
         if ((event.ctrlKey || event.metaKey) && hit.link) { const url = this.safeUrl(hit.link); if (url) this.ownerDocument.defaultView?.open(url, "_blank", "noopener"); return; }
         if (!event.shiftKey && !this.selectedIds.has(hit.id)) this.selectedIds = this.groupSelectionFor(hit);
@@ -575,6 +597,8 @@ export class WebDraw extends LitElement {
           next.has(hit.id) ? next.delete(hit.id) : next.add(hit.id);
           this.selectedIds = next;
         }
+        if ((event.ctrlKey || event.metaKey) && !hit.link) { this.syncStyleFromElement(hit as MutableElement); return; }
+        if (event.altKey && !event.shiftKey) this.duplicateSelected();
         if ([...this.selectedIds].every((id) => this.elements.find((element) => element.id === id)?.locked)) return;
         const movingIds = this.movingElementIds();
         this.drag = {
@@ -594,7 +618,8 @@ export class WebDraw extends LitElement {
     const base = { x: point.x, y: point.y, strokeColor: this.strokeColor, backgroundColor: this.backgroundColor, strokeWidth: this.strokeWidth, strokeStyle: this.strokeStyle, roughness: this.roughness, opacity: this.opacity, fillStyle: this.fillStyle };
     let element: WebdrawElement;
     if (tool === "line" || tool === "arrow") {
-      element = newLinearElement({ ...base, type: tool, points: [[0, 0], [0, 0]] as any }) as WebdrawElement;
+      element = newLinearElement({ ...base, type: tool, points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null }) as WebdrawElement;
+      if (tool === "arrow") element = { ...element, startArrowhead: this.startArrowhead, endArrowhead: this.endArrowhead, elbowed: this.arrowType === "elbow" } as WebdrawElement;
     } else if (tool === "freedraw" || tool === "laser") {
       element = newFreeDrawElement({ ...base, type: "freedraw", strokeColor: tool === "laser" ? "#e03131" : base.strokeColor, points: [[0, 0]] as any, simulatePressure: true, customData: tool === "laser" ? { webdrawLaser: true } : undefined }) as WebdrawElement;
     } else if (tool === "frame") {
@@ -602,7 +627,7 @@ export class WebDraw extends LitElement {
     } else if (tool === "embeddable") {
       element = newEmbeddableElement({ ...base, type: "embeddable" }) as WebdrawElement;
     } else if (tool === "stickynote") {
-      element = newElement({ ...base, type: "rectangle", backgroundColor: "#fff3bf", fillStyle: "solid", customData: { webdrawSticky: true } }) as WebdrawElement;
+      element = newElement({ ...base, type: "rectangle", strokeColor: this.strokeColor, backgroundColor: this.backgroundColor === "transparent" ? (this.theme === "dark" ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", customData: { webdrawSticky: true, webdrawRound: true, stickyCreated: Date.now() } }) as WebdrawElement;
     } else {
       element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse" }) as WebdrawElement;
     }
@@ -612,6 +637,13 @@ export class WebDraw extends LitElement {
 
   private onPointerMove = (event: PointerEvent) => {
     if (!this.drag) {
+      if (this.pendingLinearId) {
+        const element = this.elements.find((item) => item.id === this.pendingLinearId) as MutableElement | undefined;
+        if (element) {
+          const point = this.scenePoint(event), points = [...element.points]; points[points.length - 1] = [point.x - element.x, point.y - element.y];
+          this.replaceElement({ ...element, points, version: element.version + 1 } as WebdrawElement); this.paint(); return;
+        }
+      }
       const handle = this.tool === "selection" ? this.selectionHandleAt(this.scenePoint(event)) : null;
       const selected = handle && handle !== "rotate" ? this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined : undefined;
       this.canvas!.style.cursor = handle === "rotate" ? "grab" : handle ? cursorForHandle(handle, selected?.angle) : "";
@@ -623,6 +655,7 @@ export class WebDraw extends LitElement {
       return;
     }
     const point = this.scenePoint(event);
+    this.drag.last = point;
     if (this.drag.mode === "erase") { this.eraseAt(point); return; }
     if (this.drag.mode === "select") {
       this.selectionRect = { start: this.drag.start, end: point };
@@ -642,9 +675,21 @@ export class WebDraw extends LitElement {
       this.replaceElement(this.resizeElement(this.drag.element!, this.drag.handle!, point, event.shiftKey));
       return;
     }
+    if (this.drag.mode === "crop") {
+      this.replaceElement(this.cropImage(this.drag.element!, this.drag.handle!, point));
+      return;
+    }
+    if (this.drag.mode === "point") {
+      const original = this.drag.element!, points = original.points.map((item: number[]) => [...item]);
+      points[this.drag.pointIndex!] = [point.x - original.x, point.y - original.y];
+      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
+      this.replaceElement({ ...original, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: original.version + 1 } as WebdrawElement);
+      return;
+    }
     if (this.drag.mode === "move") {
       if (!this.drag.checkpointed) { this.checkpoint(); this.drag.checkpointed = true; }
-      const dx = point.x - this.drag.start.x, dy = point.y - this.drag.start.y;
+      let dx = point.x - this.drag.start.x, dy = point.y - this.drag.start.y;
+      if (this.snapToObjects) ({ x: dx, y: dy } = this.snappedDelta(this.movingElementIds(), dx, dy));
       this.elements = this.elements.map((element) => {
         const origin = this.drag!.origins?.get(element.id);
         return origin ? { ...element, x: origin.x + dx, y: origin.y + dy, version: element.version + 1 } as WebdrawElement : element;
@@ -660,8 +705,9 @@ export class WebDraw extends LitElement {
       const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
       next = { ...draft, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: draft.version + 1 } as unknown as MutableElement;
     } else if (draft.type === "line" || draft.type === "arrow") {
-      const dx = point.x - this.drag.start.x, dy = point.y - this.drag.start.y;
-      next = { ...draft, points: [[0, 0], [dx, dy]], width: Math.abs(dx), height: Math.abs(dy), version: draft.version + 1 } as unknown as MutableElement;
+      const points = this.drag.multiPoint ? [...draft.points.slice(0, -1), [point.x - draft.x, point.y - draft.y]] : [[0, 0], [point.x - this.drag.start.x, point.y - this.drag.start.y]];
+      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
+      next = { ...draft, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: draft.version + 1 } as unknown as MutableElement;
     } else {
       next = { ...draft, ...normalizeBounds(this.drag.start, point), version: draft.version + 1 };
     }
@@ -670,11 +716,21 @@ export class WebDraw extends LitElement {
 
   private onPointerUp = () => {
     if (!this.drag) return;
-    let changed = this.drag.mode === "draw" || this.drag.mode === "move" || this.drag.mode === "erase" || this.drag.mode === "resize" || this.drag.mode === "rotate";
+    let changed = this.drag.mode === "draw" || this.drag.mode === "move" || this.drag.mode === "erase" || this.drag.mode === "resize" || this.drag.mode === "rotate" || this.drag.mode === "point" || this.drag.mode === "crop";
     if (this.drag.mode === "draw") {
-      const element = this.elements.find((item) => item.id === this.drag!.draftId);
+      let element = this.elements.find((item) => item.id === this.drag!.draftId);
       const laser = !!(element as MutableElement | undefined)?.customData?.webdrawLaser;
-      if (element && this.isTiny(element)) this.elements = this.elements.filter((item) => item.id !== element.id);
+      const linearClick = !!element && (element.type === "line" || element.type === "arrow") && this.isTiny(element);
+      if (this.drag.multiPoint) {
+        this.pendingLinearId = element?.id ?? null;
+        this.selectedIds = new Set();
+      } else if (linearClick) {
+        this.pendingLinearId = element!.id;
+        this.selectedIds = new Set();
+      } else if (element && (element as MutableElement).customData?.webdrawSticky && this.isTiny(element)) {
+        element = { ...element, width: 250, height: 250, version: element.version + 1 } as WebdrawElement;
+        this.replaceElement(element);
+      } else if (element && this.isTiny(element)) { const id = element.id; this.elements = this.elements.filter((item) => item.id !== id); }
       else if (element && !laser) this.selectedIds = new Set([element.id]);
       if (element?.type === "embeddable") {
         const url = this.ownerDocument.defaultView?.prompt("Paste a URL to embed", "https://");
@@ -694,7 +750,10 @@ export class WebDraw extends LitElement {
         const id = element!.id;
         this.ownerDocument.defaultView?.setTimeout(() => { this.elements = this.elements.filter((item) => item.id !== id); this.requestUpdate(); }, 650);
       }
-      if (this.tool !== "freedraw" && this.tool !== "laser") this.tool = "selection";
+      if ((element as MutableElement | undefined)?.customData?.webdrawSticky && this.elements.some((item) => item.id === element!.id)) {
+        this.startTextEditing({ x: element!.x, y: element!.y }, undefined, element!.id);
+      }
+      if (!this.pendingLinearId && !this.toolLocked && this.tool !== "freedraw" && this.tool !== "laser") this.tool = "selection";
     }
     this.drag = null;
     this.selectionRect = null;
@@ -708,9 +767,12 @@ export class WebDraw extends LitElement {
   private onDoubleClick = (event: MouseEvent) => {
     if (this.viewModeEnabled) return;
     event.preventDefault();
+    if (this.pendingLinearId) { this.finishPendingLinear(); return; }
     const point = this.scenePoint(event as unknown as PointerEvent);
     const hit = this.hitTest(point);
     if (hit?.type === "text") this.startTextEditing(point, hit as MutableElement);
+    else if (hit?.type === "image") { this.selectedIds = new Set([hit.id]); this.croppingImageId = hit.id; }
+    else if (hit?.type === "line" || hit?.type === "arrow") { this.selectedIds = new Set([hit.id]); this.editingLinearId = hit.id; }
     else if (hit && !["freedraw", "image", "frame"].includes(hit.type)) {
       const labelId = hit.boundElements?.find((binding) => binding.type === "text")?.id;
       const label = labelId ? this.elements.find((item) => item.id === labelId) as MutableElement | undefined : undefined;
@@ -748,25 +810,71 @@ export class WebDraw extends LitElement {
 
   private onKeyDown = (event: KeyboardEvent) => {
     if (this.editingText) return;
+    const target = event.composedPath()[0] as HTMLElement | undefined;
+    if (target?.matches?.("input, textarea, select, button, a")) return;
     const key = event.key.toLowerCase();
-    if ((event.ctrlKey || event.metaKey) && key === "f") { event.preventDefault(); this.dialog = "search"; return; }
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "e") { event.preventDefault(); this.dialog = "export"; return; }
-    if ((event.ctrlKey || event.metaKey) && key === "o") { event.preventDefault(); this.querySelector<HTMLInputElement>(".scene-input")?.click(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "a") { event.preventDefault(); this.selectedIds = new Set(this.elements.map((item) => item.id)); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "c" && this.selectedIds.size) { event.preventDefault(); this.copySelected(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "x" && this.selectedIds.size) { event.preventDefault(); this.copySelected(); this.deleteSelected(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "v" && this.clipboard.length) { event.preventDefault(); this.pasteClipboard(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "d" && this.selectedIds.size) { event.preventDefault(); this.duplicateSelected(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "g" && this.selectedIds.size > 1) { event.preventDefault(); event.shiftKey ? this.ungroupSelected() : this.groupSelected(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); event.shiftKey ? this.redo() : this.undo(); return; }
-    if ((event.ctrlKey || event.metaKey) && key === "y") { event.preventDefault(); this.redo(); return; }
+    const primary = event.ctrlKey || event.metaKey;
+    const run = (action: () => void) => { event.preventDefault(); action(); };
+    if (event.code === "Space") { event.preventDefault(); this.spacePressed = true; return; }
+    if (this.pendingLinearId && event.key === "Enter") { run(this.finishPendingLinear); return; }
+    if (this.pendingLinearId && event.key === "Escape") { run(this.finishPendingLinear); return; }
+    if (this.croppingImageId && (event.key === "Enter" || event.key === "Escape")) { run(() => this.croppingImageId = null); return; }
+    if (primary && event.key === "Enter" && this.selectedIds.size === 1) {
+      const selected = this.elements.find((item) => this.selectedIds.has(item.id));
+      if (selected?.type === "line" || selected?.type === "arrow") { run(() => this.editingLinearId = selected.id); return; }
+    }
+    if (primary && event.key === "Delete") { run(this.confirmReset); return; }
+    if (primary && event.altKey && key === "c") { run(this.copyStyles); return; }
+    if (primary && event.altKey && key === "v") { run(this.pasteStyles); return; }
+    if (primary && event.shiftKey && event.code === "BracketLeft") { run(this.sendToBack); return; }
+    if (primary && event.shiftKey && event.code === "BracketRight") { run(this.bringToFront); return; }
+    if (primary && event.code === "BracketLeft") { run(this.sendBackward); return; }
+    if (primary && event.code === "BracketRight") { run(this.bringForward); return; }
+    if (primary && event.shiftKey && event.key.startsWith("Arrow") && this.selectedIds.size) { run(() => this.alignSelected(event.key)); return; }
+    if (primary && event.key.startsWith("Arrow") && this.selectedIds.size === 1) { run(() => this.createFlowchartNode(event.key)); return; }
+    if (primary && event.shiftKey && key === "l") { run(this.toggleSelectedLock); return; }
+    if (primary && event.shiftKey && (event.key === "<" || event.key === ">")) { run(() => this.changeFontSize(event.key === ">" ? 4 : -4)); return; }
+    if (primary && (event.key === "+" || event.key === "=")) { run(() => this.setZoom(this.zoom + .1)); return; }
+    if (primary && event.key === "-") { run(() => this.setZoom(this.zoom - .1)); return; }
+    if (primary && key === "0") { run(() => this.setZoom(1)); return; }
+    if (primary && event.key === "'") { run(() => this.gridModeEnabled = !this.gridModeEnabled); return; }
+    if (primary && key === "k") { run(this.setSelectedLink); return; }
+    if (primary && key === "f") { run(() => this.dialog = "search"); return; }
+    if (primary && key === "/") { run(() => { this.searchQuery = ""; this.dialog = "commands"; }); return; }
+    if (primary && event.shiftKey && key === "e") { run(() => this.dialog = "export"); return; }
+    if (primary && key === "o") { run(() => this.querySelector<HTMLInputElement>(".scene-input")?.click()); return; }
+    if (primary && key === "a") { run(() => this.selectedIds = new Set(this.elements.filter((item) => !(item as MutableElement).containerId).map((item) => item.id))); return; }
+    if (primary && key === "c" && this.selectedIds.size) { run(this.copySelected); return; }
+    if (primary && key === "x" && this.selectedIds.size) { run(() => { this.copySelected(); this.deleteSelected(); }); return; }
+    if (primary && event.shiftKey && key === "v") { run(this.pastePlaintext); return; }
+    if (primary && key === "v" && this.clipboard.length) { run(this.pasteClipboard); return; }
+    if (primary && key === "d" && this.selectedIds.size) { run(this.duplicateSelected); return; }
+    if (primary && key === "g" && this.selectedIds.size) { run(event.shiftKey ? this.ungroupSelected : this.groupSelected); return; }
+    if (primary && key === "z") { run(event.shiftKey ? this.redo : this.undo); return; }
+    if (primary && key === "y") { run(this.redo); return; }
+    if (event.altKey && event.shiftKey && key === "d") { run(this.toggleTheme); return; }
+    if (event.altKey && key === "z") { run(() => this.zenModeEnabled = !this.zenModeEnabled); return; }
+    if (event.altKey && key === "r") { run(() => this.viewModeEnabled = !this.viewModeEnabled); return; }
+    if (event.altKey && event.key.startsWith("Arrow")) { run(() => this.navigateFlowchart(event.key)); return; }
+    if (event.altKey && key === "/") { run(() => this.propertiesOpen = !this.propertiesOpen); return; }
+    if (event.altKey && key === "s") { run(() => this.snapToObjects = !this.snapToObjects); return; }
+    if (event.shiftKey && event.altKey && key === "c") { run(this.copyPng); return; }
+    if (event.shiftKey && key === "1") { run(() => this.fitElements(this.elements)); return; }
+    if (event.shiftKey && key === "2") { run(() => this.fitElements(this.elements.filter((item) => this.selectedIds.has(item.id)))); return; }
+    if (event.shiftKey && key === "h" && this.selectedIds.size) { run(() => this.flipSelected("horizontal")); return; }
+    if (event.shiftKey && key === "v" && this.selectedIds.size) { run(() => this.flipSelected("vertical")); return; }
+    if (key === "i" || (event.shiftKey && (key === "s" || key === "g"))) { run(this.pickColor); return; }
+    if (event.shiftKey && key === "f") { run(() => { this.propertiesOpen = true; void this.updateComplete.then(() => this.querySelector<HTMLElement>(".font-family button")?.focus()); }); return; }
+    if ((key === "s" || key === "g") && !event.altKey) { run(() => this.querySelector<HTMLInputElement>(key === "s" ? ".stroke-picker-proxy" : ".background-picker-proxy")?.click()); return; }
+    if (event.key === "PageUp" || event.key === "PageDown") { event.preventDefault(); const delta = event.key === "PageUp" ? 100 : -100; event.shiftKey ? this.pan.x += delta : this.pan.y += delta; this.requestUpdate(); return; }
     if ((event.key === "Delete" || event.key === "Backspace") && this.selectedIds.size) { event.preventDefault(); this.deleteSelected(); return; }
-    if (event.key.startsWith("Arrow") && this.selectedIds.size) { event.preventDefault(); this.nudgeSelected(event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0, event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0, event.shiftKey ? 10 : 1); return; }
+    if (!event.altKey && event.key.startsWith("Arrow") && this.selectedIds.size) { event.preventDefault(); this.nudgeSelected(event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0, event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0, event.shiftKey ? 10 : 1); return; }
     if (event.key === "?") { this.dialog = "help"; return; }
-    if (event.key === "Escape") { this.selectedIds = new Set(); this.tool = "selection"; this.menuOpen = false; this.moreToolsOpen = false; this.libraryOpen = false; this.dialog = null; return; }
+    if (event.key === "Escape") { this.editingLinearId = null; this.selectedIds = new Set(); this.tool = "selection"; this.menuOpen = false; this.moreToolsOpen = false; this.libraryOpen = false; this.dialog = null; return; }
     if (event.key === "Enter" && this.selectedIds.size === 1) {
       const selected = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement;
-      if (selected.type === "text") this.startTextEditing({ x: selected.x, y: selected.y }, selected);
+      if (selected.type === "image") this.croppingImageId = selected.id;
+      else if (selected.type === "text") this.startTextEditing({ x: selected.x, y: selected.y }, selected);
       else {
         const labelId = selected.boundElements?.find((binding) => binding.type === "text")?.id;
         const label = labelId ? this.elements.find((item) => item.id === labelId) as MutableElement | undefined : undefined;
@@ -774,10 +882,14 @@ export class WebDraw extends LitElement {
       }
       return;
     }
+    if (event.key === "Tab" && this.selectedIds.size) { run(() => this.cycleSelectedShape(event.shiftKey ? -1 : 1)); return; }
     if (key === "9") { this.querySelector<HTMLInputElement>(".image-input")?.click(); return; }
-    const shortcuts: Record<string, Tool> = { h: "hand", v: "selection", "1": "selection", r: "rectangle", "2": "rectangle", d: "diamond", "3": "diamond", o: "ellipse", "4": "ellipse", a: "arrow", "5": "arrow", l: "line", "6": "line", p: "freedraw", "7": "freedraw", t: "text", "8": "text", e: "eraser", "0": "eraser", f: "frame", k: "laser", q: "stickynote" };
-    if (!event.ctrlKey && !event.metaKey && shortcuts[key]) this.setTool(shortcuts[key]);
+    if (key === "q") { this.toolLocked = !this.toolLocked; return; }
+    const shortcuts: Record<string, Tool> = { h: "hand", v: "selection", "1": "selection", r: "rectangle", "2": "rectangle", d: "diamond", "3": "diamond", o: "ellipse", "4": "ellipse", a: "arrow", "5": "arrow", l: "line", "6": "line", p: "freedraw", "7": "freedraw", t: "text", "8": "text", e: "eraser", "0": "eraser", f: "frame", k: "laser", n: "stickynote", b: "bucket" };
+    if (!primary && !event.altKey && !event.shiftKey && shortcuts[key]) { event.preventDefault(); this.setTool(shortcuts[key]); }
   };
+
+  private onKeyUp = (event: KeyboardEvent) => { if (event.code === "Space") this.spacePressed = false; };
 
   private onTextKeyDown = (event: KeyboardEvent) => {
     event.stopPropagation();
@@ -800,15 +912,15 @@ export class WebDraw extends LitElement {
     if (text.trim()) {
       this.checkpoint();
       const existing = edit.elementId ? this.elements.find((item) => item.id === edit.elementId) as MutableElement | undefined : undefined;
-      const fresh = newTextElement({ x: edit.x, y: edit.y, text, strokeColor: existing?.strokeColor ?? this.strokeColor, fontSize: edit.fontSize, containerId: edit.containerId ?? null, textAlign: edit.containerId ? "center" : "left", verticalAlign: edit.containerId ? "middle" : "top" }) as MutableElement;
-      let element = existing ? { ...existing, text, originalText: text, width: fresh.width, height: fresh.height, version: existing.version + 1 } as WebdrawElement : fresh as WebdrawElement;
+      const fresh = newTextElement({ x: edit.x, y: edit.y, text, strokeColor: existing?.strokeColor ?? this.strokeColor, fontSize: edit.fontSize, fontFamily: edit.fontFamily as any, containerId: edit.containerId ?? null, textAlign: edit.textAlign, verticalAlign: edit.verticalAlign }) as MutableElement;
+      let element = existing ? { ...existing, text, originalText: text, width: fresh.width, height: fresh.height, fontSize: edit.fontSize, fontFamily: edit.fontFamily, textAlign: edit.textAlign, verticalAlign: edit.verticalAlign, version: existing.version + 1 } as WebdrawElement : fresh as WebdrawElement;
       if (edit.containerId) {
         const container = this.elements.find((item) => item.id === edit.containerId)!;
-        element = { ...element, x: container.x + (container.width - fresh.width) / 2, y: container.y + (container.height - fresh.height) / 2, containerId: container.id } as WebdrawElement;
+        element = { ...element, ...this.labelPosition(container as MutableElement, fresh, edit.verticalAlign), containerId: container.id } as WebdrawElement;
         if (!existing) this.elements = this.elements.map((item) => item.id === container.id ? { ...item, boundElements: [...(item.boundElements ?? []), { id: element.id, type: "text" }] } as WebdrawElement : item);
       }
       this.elements = existing ? this.elements.map((item) => item.id === existing.id ? element : item) : [...this.elements, element];
-      this.selectedIds = new Set([element.id]);
+      this.selectedIds = new Set([edit.containerId ?? element.id]);
       this.emitChange();
     } else if (edit.elementId) {
       this.selectedIds = new Set([edit.elementId]);
@@ -816,21 +928,21 @@ export class WebDraw extends LitElement {
     }
     this.textDraft = "";
     this.editingText = null;
-    this.tool = "selection";
+    if (!this.toolLocked) this.tool = "selection";
   };
 
   private startTextEditing(point: Point, element?: MutableElement, containerId?: string) {
     if (element) {
-      this.editingText = { x: element.x, y: element.y, fontSize: element.fontSize ?? 20, width: element.width, elementId: element.id, containerId: element.containerId ?? undefined };
+      this.editingText = { x: element.x, y: element.y, fontSize: element.fontSize ?? this.fontSize, fontFamily: element.fontFamily ?? this.fontFamily, textAlign: element.textAlign ?? this.textAlign, verticalAlign: element.verticalAlign ?? this.verticalAlign, width: element.width, elementId: element.id, containerId: element.containerId ?? undefined };
       this.textDraft = element.text ?? "";
       this.selectedIds = new Set([element.id]);
     } else if (containerId) {
       const container = this.elements.find((item) => item.id === containerId)!;
-      this.editingText = { x: container.x + 8, y: container.y + container.height / 2 - 12, width: Math.max(64, container.width - 16), fontSize: 20, containerId };
+      this.editingText = { x: container.x + 8, y: container.y + container.height / 2 - this.fontSize / 2, width: Math.max(64, container.width - 16), fontSize: this.fontSize, fontFamily: this.fontFamily, textAlign: "center", verticalAlign: "middle", containerId };
       this.textDraft = "";
       this.selectedIds = new Set([containerId]);
     } else {
-      this.editingText = { ...point, fontSize: 20 };
+      this.editingText = { ...point, fontSize: this.fontSize, fontFamily: this.fontFamily, textAlign: this.textAlign, verticalAlign: this.verticalAlign };
       this.textDraft = "";
     }
   }
@@ -841,7 +953,7 @@ export class WebDraw extends LitElement {
     this.elements = this.elements.map((item) => {
       if (item.id === element.id) return element;
       if (!labelIds.has(item.id)) return item;
-      return { ...item, x: element.x + (element.width - item.width) / 2, y: element.y + (element.height - item.height) / 2, angle: mutable.angle ?? 0, version: item.version + 1 } as WebdrawElement;
+      return { ...item, ...this.labelPosition(mutable, item as MutableElement, (item as MutableElement).verticalAlign), angle: mutable.angle ?? 0, version: item.version + 1 } as WebdrawElement;
     });
   }
 
@@ -853,6 +965,30 @@ export class WebDraw extends LitElement {
     this.strokeStyle = element.strokeStyle ?? this.strokeStyle;
     this.roughness = element.roughness ?? this.roughness;
     this.opacity = element.opacity ?? this.opacity;
+    const label = element.type === "text" ? element : this.boundLabel(element);
+    if (label) {
+      this.fontFamily = label.fontFamily ?? this.fontFamily;
+      this.fontSize = label.fontSize ?? this.fontSize;
+      this.textAlign = label.textAlign ?? this.textAlign;
+      this.verticalAlign = label.verticalAlign ?? this.verticalAlign;
+      if (element.customData?.webdrawSticky) this.strokeColor = label.strokeColor ?? element.strokeColor;
+    }
+    if (element.type === "arrow") {
+      this.arrowType = element.elbowed ? "elbow" : element.roundness ? "round" : "sharp";
+      this.startArrowhead = element.startArrowhead ?? null;
+      this.endArrowhead = element.endArrowhead ?? null;
+    }
+  }
+
+  private boundLabel(element: MutableElement) {
+    const id = element.boundElements?.find((binding: { type: string }) => binding.type === "text")?.id;
+    return id ? this.elements.find((item) => item.id === id) as MutableElement | undefined : undefined;
+  }
+
+  private labelPosition(container: MutableElement, label: MutableElement, verticalAlign: VerticalAlign = "middle") {
+    const footer = container.customData?.webdrawSticky ? 36 : 0;
+    const y = verticalAlign === "top" ? container.y + 16 : verticalAlign === "bottom" ? container.y + container.height - label.height - 16 - footer : container.y + (container.height - footer - label.height) / 2;
+    return { x: container.x + (container.width - label.width) / 2, y };
   }
 
   private selectionHandleAt(point: Point): ResizeHandle | "rotate" | null {
@@ -903,6 +1039,18 @@ export class WebDraw extends LitElement {
     return { ...original, ...next, ...(fontSize ? { fontSize } : {}), version: original.version + 1 } as WebdrawElement;
   }
 
+  private cropImage(original: MutableElement, handle: ResizeHandle, point: Point): WebdrawElement {
+    const resized = this.resizeElement(original, handle, point, false) as MutableElement;
+    const crop = original.customData?.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+    const left = handle.includes("w") ? (resized.x - original.x) / original.width : 0;
+    const top = handle.includes("n") ? (resized.y - original.y) / original.height : 0;
+    const width = resized.width / original.width, height = resized.height / original.height;
+    const x = Math.max(0, Math.min(crop.x + crop.width * left, crop.x + crop.width - .01));
+    const y = Math.max(0, Math.min(crop.y + crop.height * top, crop.y + crop.height - .01));
+    const nextCrop = { x, y, width: Math.max(.01, Math.min(1 - x, crop.width * width)), height: Math.max(.01, Math.min(1 - y, crop.height * height)) };
+    return { ...resized, customData: { ...(original.customData ?? {}), crop: nextCrop } } as WebdrawElement;
+  }
+
   private bounds(element: MutableElement) {
     if (element.points) {
       const xs = element.points.map(([x]: number[]) => element.x + x), ys = element.points.map(([, y]: number[]) => element.y + y);
@@ -912,8 +1060,12 @@ export class WebDraw extends LitElement {
   }
 
   private hitTest(point: Point) {
+    return this.hitTestAll(point)[0];
+  }
+
+  private hitTestAll(point: Point) {
     const threshold = 8 / this.zoom;
-    return [...this.elements].reverse().find((item) => {
+    return [...this.elements].reverse().filter((item) => {
       const element = item as MutableElement, box = this.bounds(element), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       const local = rotatePoint(point, center, -(element.angle ?? 0));
       return local.x >= box.x - threshold && local.x <= box.x + box.width + threshold && local.y >= box.y - threshold && local.y <= box.y + box.height + threshold;
@@ -996,14 +1148,76 @@ export class WebDraw extends LitElement {
     this.emitChange();
   }
 
-  private onStrokeColor = (event: InputEvent) => { this.strokeColor = (event.target as HTMLInputElement).value; this.updateSelected({ strokeColor: this.strokeColor }); this.requestUpdate(); };
+  private setStrokeColor = (value: string) => {
+    this.strokeColor = value;
+    if (this.selectedIds.size) {
+      const ids = new Set(this.selectedIds);
+      for (const item of this.elements.filter((element) => ids.has(element.id) && (element as MutableElement).customData?.webdrawSticky)) {
+        for (const binding of item.boundElements ?? []) if (binding.type === "text") ids.add(binding.id);
+      }
+      this.checkpoint();
+      this.elements = this.elements.map((item) => ids.has(item.id) ? { ...item, strokeColor: value, version: item.version + 1 } as WebdrawElement : item);
+      this.emitChange();
+    }
+    this.requestUpdate();
+  };
   private setBackground(value: string) { this.backgroundColor = value; this.updateSelected({ backgroundColor: value }); this.requestUpdate(); }
   private setFillStyle(value: typeof this.fillStyle) { this.fillStyle = value; this.updateSelected({ fillStyle: value }); this.requestUpdate(); }
   private setStrokeWidth(value: number) { this.strokeWidth = value; this.updateSelected({ strokeWidth: value }); this.requestUpdate(); }
   private setStrokeStyle(value: typeof this.strokeStyle) { this.strokeStyle = value; this.updateSelected({ strokeStyle: value }); this.requestUpdate(); }
   private setRoughness(value: number) { this.roughness = value; this.updateSelected({ roughness: value }); this.requestUpdate(); }
-  private onOpacity = (event: Event) => { this.opacity = Number((event.target as HTMLInputElement).value); this.updateSelected({ opacity: this.opacity }); this.requestUpdate(); };
+  private setStickyRound(round: boolean) {
+    const selected = this.elements.find((item) => this.selectedIds.has(item.id));
+    if (!selected) return;
+    this.checkpoint();
+    this.elements = this.elements.map((item) => item.id === selected.id ? { ...item, customData: { ...(item.customData ?? {}), webdrawRound: round }, version: item.version + 1 } as WebdrawElement : item);
+    this.emitChange();
+  }
+  private onOpacity = (event: Event) => {
+    this.opacity = Number((event.target as HTMLInputElement).value);
+    if (!this.selectedIds.size) { this.requestUpdate(); return; }
+    const ids = new Set(this.selectedIds);
+    for (const item of this.elements.filter((element) => ids.has(element.id))) for (const binding of item.boundElements ?? []) if (binding.type === "text") ids.add(binding.id);
+    this.checkpoint();
+    this.elements = this.elements.map((item) => ids.has(item.id) ? { ...item, opacity: this.opacity, version: item.version + 1 } as WebdrawElement : item);
+    this.emitChange(); this.requestUpdate();
+  };
   private onCanvasColor = (event: InputEvent) => { this.canvasColor = (event.target as HTMLInputElement).value; this.requestUpdate(); };
+
+  private updateTextStyle(patch: Record<string, unknown>) {
+    const ids = new Set<string>();
+    for (const item of this.elements) {
+      if (this.selectedIds.has(item.id) && item.type === "text") ids.add(item.id);
+      if (this.selectedIds.has(item.id)) for (const binding of item.boundElements ?? []) if (binding.type === "text") ids.add(binding.id);
+    }
+    if (!ids.size) { this.requestUpdate(); return; }
+    this.checkpoint();
+    this.elements = this.elements.map((item) => {
+      if (!ids.has(item.id)) return item;
+      const source = { ...(item as MutableElement), ...patch };
+      const fresh = newTextElement({ x: source.x, y: source.y, text: source.text, strokeColor: source.strokeColor, fontSize: source.fontSize, fontFamily: source.fontFamily, textAlign: source.textAlign, verticalAlign: source.verticalAlign, containerId: source.containerId ?? null }) as MutableElement;
+      const resized = { ...source, width: fresh.width, height: fresh.height, version: source.version + 1 } as MutableElement;
+      const container = source.containerId ? this.elements.find((candidate) => candidate.id === source.containerId) as MutableElement | undefined : undefined;
+      return { ...resized, ...(container ? this.labelPosition(container, resized, source.verticalAlign) : {}) } as WebdrawElement;
+    });
+    this.emitChange();
+  }
+
+  private setFontFamily(value: number) { this.fontFamily = value; this.updateTextStyle({ fontFamily: value }); }
+  private setFontSize(value: number) { this.fontSize = value; this.updateTextStyle({ fontSize: value }); }
+  private changeFontSize(delta: number) { this.setFontSize(Math.max(8, Math.min(96, this.fontSize + delta))); }
+  private setTextAlign(value: TextAlign) { this.textAlign = value; this.updateTextStyle({ textAlign: value }); }
+  private setVerticalAlign(value: VerticalAlign) { this.verticalAlign = value; this.updateTextStyle({ verticalAlign: value }); }
+  private setArrowType(value: typeof this.arrowType) {
+    this.arrowType = value;
+    this.updateSelected({ roundness: value === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null, elbowed: value === "elbow" });
+    this.requestUpdate();
+  }
+  private setArrowhead(side: "start" | "end", value: Arrowhead) {
+    if (side === "start") this.startArrowhead = value; else this.endArrowhead = value;
+    this.updateSelected({ [side === "start" ? "startArrowhead" : "endArrowhead"]: value });
+    this.requestUpdate();
+  }
 
   private duplicateSelected = () => {
     if (!this.selectedIds.size) return;
@@ -1056,6 +1270,19 @@ export class WebDraw extends LitElement {
     this.emitChange();
   }
 
+  private snappedDelta(ids: Set<string>, dx: number, dy: number) {
+    const moving = this.elements.filter((item) => this.selectedIds.has(item.id)).map((item) => this.bounds(item as MutableElement));
+    const fixed = this.elements.filter((item) => !ids.has(item.id)).map((item) => this.bounds(item as MutableElement));
+    if (!moving.length || !fixed.length) return { x: dx, y: dy };
+    const coordinates = (boxes: ReturnType<WebDraw["bounds"]>[], axis: "x" | "y") => boxes.flatMap((box) => axis === "x" ? [box.x, box.x + box.width / 2, box.x + box.width] : [box.y, box.y + box.height / 2, box.y + box.height]);
+    const nearest = (sources: number[], targets: number[], delta: number) => {
+      let adjustment = 7 / this.zoom;
+      for (const source of sources) for (const target of targets) if (Math.abs(target - source - delta) < Math.abs(adjustment)) adjustment = target - source - delta;
+      return Math.abs(adjustment) < 7 / this.zoom ? delta + adjustment : delta;
+    };
+    return { x: nearest(coordinates(moving, "x"), coordinates(fixed, "x"), dx), y: nearest(coordinates(moving, "y"), coordinates(fixed, "y"), dy) };
+  }
+
   private setSelectedLink = () => {
     const link = this.ownerDocument.defaultView?.prompt("Paste a link", "https://");
     if (link) this.updateSelected({ link });
@@ -1077,19 +1304,131 @@ export class WebDraw extends LitElement {
 
   private sendBackward = () => this.moveSelectedLayer(-1);
   private bringForward = () => this.moveSelectedLayer(1);
+  private sendToBack = () => this.moveSelectedToEdge("back");
+  private bringToFront = () => this.moveSelectedToEdge("front");
 
   private moveSelectedLayer(direction: -1 | 1) {
     if (!this.selectedIds.size) return;
     this.checkpoint();
+    const ids = this.movingElementIds();
     const next = [...this.elements];
     if (direction < 0) {
-      for (let index = 1; index < next.length; index++) if (this.selectedIds.has(next[index].id) && !this.selectedIds.has(next[index - 1].id)) [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      for (let index = 1; index < next.length; index++) if (ids.has(next[index].id) && !ids.has(next[index - 1].id)) [next[index - 1], next[index]] = [next[index], next[index - 1]];
     } else {
-      for (let index = next.length - 2; index >= 0; index--) if (this.selectedIds.has(next[index].id) && !this.selectedIds.has(next[index + 1].id)) [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      for (let index = next.length - 2; index >= 0; index--) if (ids.has(next[index].id) && !ids.has(next[index + 1].id)) [next[index], next[index + 1]] = [next[index + 1], next[index]];
     }
     this.elements = next;
     this.emitChange();
   }
+
+  private moveSelectedToEdge(edge: "back" | "front") {
+    if (!this.selectedIds.size) return;
+    this.checkpoint();
+    const ids = this.movingElementIds(), selected = this.elements.filter((item) => ids.has(item.id)), rest = this.elements.filter((item) => !ids.has(item.id));
+    this.elements = edge === "back" ? [...selected, ...rest] : [...rest, ...selected];
+    this.emitChange();
+  }
+
+  private toggleSelectedLock = () => {
+    const locked = this.elements.some((item) => this.selectedIds.has(item.id) && item.locked);
+    this.updateSelected({ locked: !locked });
+  };
+
+  private copyStyles = () => {
+    const item = this.elements.find((element) => this.selectedIds.has(element.id)) as MutableElement | undefined;
+    if (!item) return;
+    const label = item.type === "text" ? item : this.boundLabel(item), values: Record<string, any> = { ...item, ...(label ? { fontFamily: label.fontFamily, fontSize: label.fontSize, textAlign: label.textAlign, verticalAlign: label.verticalAlign } : {}) };
+    this.styleClipboard = Object.fromEntries(["strokeColor", "backgroundColor", "fillStyle", "strokeWidth", "strokeStyle", "roughness", "opacity", "fontFamily", "fontSize", "textAlign", "verticalAlign", "startArrowhead", "endArrowhead", "roundness", "elbowed"].filter((key) => values[key] !== undefined).map((key) => [key, values[key]]));
+  };
+
+  private pasteStyles = () => {
+    if (!this.styleClipboard) return;
+    const textKeys = ["fontFamily", "fontSize", "textAlign", "verticalAlign"], text = Object.fromEntries(Object.entries(this.styleClipboard).filter(([key]) => textKeys.includes(key)));
+    const shape = Object.fromEntries(Object.entries(this.styleClipboard).filter(([key]) => !textKeys.includes(key)));
+    if (Object.keys(shape).length) this.updateSelected(shape);
+    if (Object.keys(text).length) this.updateTextStyle(text);
+  };
+
+  private alignSelected(key: string) {
+    const selected = this.elements.filter((item) => this.selectedIds.has(item.id));
+    if (selected.length < 2) return;
+    const boxes = selected.map((item) => this.bounds(item as MutableElement));
+    const target = key === "ArrowLeft" ? Math.min(...boxes.map((box) => box.x)) : key === "ArrowRight" ? Math.max(...boxes.map((box) => box.x + box.width)) : key === "ArrowUp" ? Math.min(...boxes.map((box) => box.y)) : Math.max(...boxes.map((box) => box.y + box.height));
+    this.checkpoint();
+    const offsets = new Map(selected.map((item, index) => [item.id, key === "ArrowLeft" ? { x: target - boxes[index].x, y: 0 } : key === "ArrowRight" ? { x: target - boxes[index].x - boxes[index].width, y: 0 } : key === "ArrowUp" ? { x: 0, y: target - boxes[index].y } : { x: 0, y: target - boxes[index].y - boxes[index].height }]));
+    for (const selectedItem of selected) for (const binding of selectedItem.boundElements ?? []) if (binding.type === "text") offsets.set(binding.id, offsets.get(selectedItem.id)!);
+    this.elements = this.elements.map((item) => { const offset = offsets.get(item.id); return offset ? { ...item, x: item.x + offset.x, y: item.y + offset.y, version: item.version + 1 } as WebdrawElement : item; });
+    this.emitChange();
+  }
+
+  private flipSelected(axis: "horizontal" | "vertical") {
+    if (!this.selectedIds.size) return;
+    this.checkpoint();
+    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) ? { ...item, customData: { ...(item.customData ?? {}), [axis === "horizontal" ? "webdrawFlipX" : "webdrawFlipY"]: !(item as MutableElement).customData?.[axis === "horizontal" ? "webdrawFlipX" : "webdrawFlipY"] }, version: item.version + 1 } as WebdrawElement : item);
+    this.emitChange();
+  }
+
+  private cycleSelectedShape(direction: -1 | 1) {
+    const types = ["rectangle", "diamond", "ellipse"] as const;
+    const selected = this.elements.find((item) => this.selectedIds.has(item.id));
+    const index = selected ? types.indexOf(selected.type as typeof types[number]) : -1;
+    if (!selected || index < 0) return;
+    this.updateSelected({ type: types[(index + direction + types.length) % types.length] });
+  }
+
+  private createFlowchartNode(key: string) {
+    const source = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
+    if (!source || ["text", "line", "arrow", "freedraw", "image", "frame", "embeddable"].includes(source.type)) return;
+    const horizontal = key === "ArrowLeft" || key === "ArrowRight", sign = key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1;
+    const distance = (horizontal ? Math.max(source.width, 120) : Math.max(source.height, 80)) + 100;
+    const dx = horizontal ? sign * distance : 0, dy = horizontal ? 0 : sign * distance;
+    const sourceIds = this.movingElementIds(), originals = this.elements.filter((item) => sourceIds.has(item.id));
+    const ids = new Map(originals.map((item) => [item.id, this.ownerDocument.defaultView!.crypto.randomUUID()]));
+    const copies = originals.map((item) => { const mutable = item as MutableElement; return { ...structuredClone(item), id: ids.get(item.id)!, x: item.x + dx, y: item.y + dy, containerId: mutable.containerId ? ids.get(mutable.containerId) ?? null : null, frameId: null, boundElements: item.boundElements?.map((binding) => ({ ...binding, id: ids.get(binding.id) ?? binding.id })) ?? null, version: 1 } as WebdrawElement; });
+    const connector = newLinearElement({ type: "arrow", x: source.x + source.width / 2, y: source.y + source.height / 2, points: [[0, 0], [dx, dy]] as any, strokeColor: this.strokeColor, backgroundColor: "transparent", strokeWidth: this.strokeWidth, strokeStyle: this.strokeStyle, roughness: this.roughness, opacity: this.opacity, roundness: { type: ROUNDNESS.PROPORTIONAL_RADIUS } }) as WebdrawElement;
+    this.checkpoint(); this.elements = [...this.elements, connector, ...copies]; this.selectedIds = new Set([ids.get(source.id)!]); this.emitChange();
+  }
+
+  private navigateFlowchart(key: string) {
+    const source = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
+    if (!source) return;
+    const center = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+    const candidates = this.elements.filter((item) => item.id !== source.id && !(item as MutableElement).containerId && !["line", "arrow"].includes(item.type)).map((item) => {
+      const box = this.bounds(item as MutableElement), dx = box.x + box.width / 2 - center.x, dy = box.y + box.height / 2 - center.y;
+      const forward = key === "ArrowLeft" ? -dx : key === "ArrowRight" ? dx : key === "ArrowUp" ? -dy : dy;
+      const cross = key === "ArrowLeft" || key === "ArrowRight" ? Math.abs(dy) : Math.abs(dx);
+      return { item, forward, score: Math.hypot(dx, dy) + cross };
+    }).filter((candidate) => candidate.forward > 0).sort((a, b) => a.score - b.score);
+    if (candidates[0]) { this.selectedIds = new Set([candidates[0].item.id]); this.syncStyleFromElement(candidates[0].item as MutableElement); this.requestUpdate(); }
+  }
+
+  private fitElements(elements: readonly WebdrawElement[]) {
+    if (!elements.length || !this.canvas) return;
+    const boxes = elements.map((item) => this.bounds(item as MutableElement));
+    const minX = Math.min(...boxes.map((box) => box.x)), minY = Math.min(...boxes.map((box) => box.y));
+    const maxX = Math.max(...boxes.map((box) => box.x + box.width)), maxY = Math.max(...boxes.map((box) => box.y + box.height));
+    const rect = this.canvas.getBoundingClientRect(), padding = 64;
+    this.zoom = Math.min(1, Math.max(.1, Math.min((rect.width - padding * 2) / Math.max(1, maxX - minX), (rect.height - padding * 2) / Math.max(1, maxY - minY))));
+    this.pan = { x: rect.width / 2 - (minX + maxX) / 2 * this.zoom, y: rect.height / 2 - (minY + maxY) / 2 * this.zoom };
+    this.requestUpdate();
+  }
+
+  private pastePlaintext = async () => {
+    try {
+      const text = await this.ownerDocument.defaultView?.navigator.clipboard.readText();
+      if (!text || !this.canvas) return;
+      const rect = this.canvas.getBoundingClientRect();
+      this.startTextEditing({ x: (rect.width / 2 - this.pan.x) / this.zoom, y: (rect.height / 2 - this.pan.y) / this.zoom });
+      this.textDraft = text;
+      this.commitText();
+    } catch { /* Clipboard permission is browser-controlled. */ }
+  };
+
+  private pickColor = async () => {
+    const EyeDropper = (this.ownerDocument.defaultView as any)?.EyeDropper;
+    if (!EyeDropper) return;
+    try { this.setStrokeColor((await new EyeDropper().open()).sRGBHex); } catch { /* User cancelled. */ }
+  };
 
   private focusElement(element: WebdrawElement) {
     const rect = this.canvas!.getBoundingClientRect(), box = this.bounds(element as MutableElement);
@@ -1249,10 +1588,19 @@ export class WebDraw extends LitElement {
     const options = { stroke, strokeWidth: element.strokeWidth, strokeLineDash: element.strokeStyle === "dashed" ? [8, 8] : element.strokeStyle === "dotted" ? [2, 5] : undefined, roughness: element.roughness, seed: element.seed, fill: element.backgroundColor === "transparent" ? undefined : element.backgroundColor, fillStyle: element.fillStyle };
     context.save(); context.globalAlpha = (element.opacity ?? 100) / 100;
     const box = this.bounds(element), centerX = box.x + box.width / 2, centerY = box.y + box.height / 2;
-    if (element.angle) { context.translate(centerX, centerY); context.rotate(element.angle); context.translate(-centerX, -centerY); }
+    if (element.angle || element.customData?.webdrawFlipX || element.customData?.webdrawFlipY) {
+      context.translate(centerX, centerY);
+      if (element.angle) context.rotate(element.angle);
+      context.scale(element.customData?.webdrawFlipX ? -1 : 1, element.customData?.webdrawFlipY ? -1 : 1);
+      context.translate(-centerX, -centerY);
+    }
     if (element.customData?.webdrawSticky) {
-      roughCanvas.polygon([[element.x, element.y], [element.x + element.width, element.y], [element.x + element.width, element.y + element.height - 18], [element.x + element.width - 18, element.y + element.height], [element.x, element.y + element.height]], { ...options, fill: element.backgroundColor, fillStyle: "solid" });
-      roughCanvas.linearPath([[element.x + element.width - 18, element.y + element.height], [element.x + element.width - 18, element.y + element.height - 18], [element.x + element.width, element.y + element.height - 18]], options);
+      const radius = element.customData?.webdrawRound === false ? 3 : 12;
+      context.beginPath(); context.roundRect(element.x, element.y, element.width, element.height, radius);
+      context.fillStyle = element.backgroundColor; context.fill(); context.strokeStyle = stroke; context.lineWidth = Math.max(1, element.strokeWidth / 2); context.stroke();
+      const created = element.customData?.stickyCreated ?? element.created ?? Date.now();
+      const date = new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(created);
+      context.fillStyle = stroke; context.font = "14px Assistant, sans-serif"; context.textAlign = "right"; context.textBaseline = "alphabetic"; context.fillText(date, element.x + element.width - 16, element.y + element.height - 18); context.textAlign = "start";
     } else if (element.type === "rectangle") roughCanvas.rectangle(element.x, element.y, element.width, element.height, options);
     else if (element.type === "diamond") roughCanvas.polygon([[element.x + element.width / 2, element.y], [element.x + element.width, element.y + element.height / 2], [element.x + element.width / 2, element.y + element.height], [element.x, element.y + element.height / 2]], options);
     else if (element.type === "ellipse") roughCanvas.ellipse(element.x + element.width / 2, element.y + element.height / 2, element.width, element.height, options);
@@ -1264,19 +1612,27 @@ export class WebDraw extends LitElement {
       context.fillStyle = darkMode ? "#b8b8b8" : "#5c5c5c"; context.font = "14px Assistant, sans-serif"; context.textAlign = "center"; context.fillText(element.customData?.embedUrl || "Web Embed", element.x + element.width / 2, element.y + element.height / 2); context.textAlign = "start";
     } else if (element.type === "image") {
       const image = this.imageCache.get(element.id) ?? this.ensureImage(element);
-      if (image?.complete) context.drawImage(image, element.x, element.y, element.width, element.height);
+      if (image?.complete) {
+        const crop = element.customData?.crop;
+        crop ? context.drawImage(image, crop.x * image.naturalWidth, crop.y * image.naturalHeight, crop.width * image.naturalWidth, crop.height * image.naturalHeight, element.x, element.y, element.width, element.height) : context.drawImage(image, element.x, element.y, element.width, element.height);
+      }
     }
     else if (element.type === "line" || element.type === "arrow") {
-      const points = element.points.map(([x, y]: number[]) => [element.x + x, element.y + y] as [number, number]);
-      roughCanvas.linearPath(points, options);
-      if (element.type === "arrow" && points.length > 1) this.paintArrowhead(context, points.at(-2)!, points.at(-1)!, element, stroke);
+      let points = element.points.map(([x, y]: number[]) => [element.x + x, element.y + y] as [number, number]);
+      if (element.elbowed && points.length === 2) points = [points[0], [points[1][0], points[0][1]], points[1]];
+      element.roundness && points.length > 2 ? roughCanvas.curve(points, options) : roughCanvas.linearPath(points, options);
+      if (element.type === "arrow" && points.length > 1) {
+        if (element.startArrowhead) this.paintArrowhead(context, points[1], points[0], element, element.startArrowhead, stroke);
+        if (element.endArrowhead) this.paintArrowhead(context, points.at(-2)!, points.at(-1)!, element, element.endArrowhead, stroke);
+      }
     } else if (element.type === "freedraw") {
       const points = element.points.map(([x, y]: number[]) => [element.x + x, element.y + y]);
       const outline = getStroke(points, { size: element.strokeWidth * 4, thinning: .6, smoothing: .5, streamline: .5, simulatePressure: element.simulatePressure });
       if (outline.length) { context.beginPath(); context.moveTo(outline[0][0], outline[0][1]); for (const [x, y] of outline.slice(1)) context.lineTo(x, y); context.closePath(); context.fillStyle = stroke; context.fill(); }
     } else if (element.type === "text") {
-      context.fillStyle = stroke; context.font = `${element.fontSize}px Excalifont, Virgil, sans-serif`; context.textBaseline = "top";
-      String(element.text).split("\n").forEach((line, index) => context.fillText(line, element.x, element.y + index * element.fontSize * (element.lineHeight ?? 1.25)));
+      context.fillStyle = stroke; context.font = `${element.fontSize}px ${this.fontName(element.fontFamily)}`; context.textBaseline = "top"; context.textAlign = (element.textAlign ?? "left") as CanvasTextAlign;
+      const x = element.textAlign === "center" ? element.x + element.width / 2 : element.textAlign === "right" ? element.x + element.width : element.x;
+      String(element.text).split("\n").forEach((line, index) => context.fillText(line, x, element.y + index * element.fontSize * (element.lineHeight ?? 1.25)));
     }
     context.restore();
   }
@@ -1304,11 +1660,24 @@ export class WebDraw extends LitElement {
     } catch { return null; }
   }
 
-  private paintArrowhead(context: CanvasRenderingContext2D, from: [number, number], to: [number, number], element: MutableElement, stroke = element.strokeColor) {
+  private fontName(fontFamily: number) {
+    if (fontFamily === FONT_FAMILY.Nunito) return "Nunito, Assistant, sans-serif";
+    if (fontFamily === FONT_FAMILY["Comic Shanns"]) return "'Comic Shanns', Cascadia, monospace";
+    if (fontFamily === FONT_FAMILY.Cascadia) return "Cascadia, monospace";
+    if (fontFamily === FONT_FAMILY.Helvetica || fontFamily === FONT_FAMILY.Assistant) return "Assistant, sans-serif";
+    return "Excalifont, Virgil, sans-serif";
+  }
+
+  private paintArrowhead(context: CanvasRenderingContext2D, from: [number, number], to: [number, number], element: MutableElement, type: Arrowhead, stroke = element.strokeColor) {
     const angle = Math.atan2(to[1] - from[1], to[0] - from[0]), size = 14 + element.strokeWidth * 2;
-    context.save(); context.strokeStyle = stroke; context.lineWidth = element.strokeWidth; context.lineCap = "round"; context.beginPath();
-    context.moveTo(to[0] - Math.cos(angle - Math.PI / 6) * size, to[1] - Math.sin(angle - Math.PI / 6) * size); context.lineTo(to[0], to[1]);
-    context.lineTo(to[0] - Math.cos(angle + Math.PI / 6) * size, to[1] - Math.sin(angle + Math.PI / 6) * size); context.stroke(); context.restore();
+    const left: [number, number] = [to[0] - Math.cos(angle - Math.PI / 6) * size, to[1] - Math.sin(angle - Math.PI / 6) * size];
+    const right: [number, number] = [to[0] - Math.cos(angle + Math.PI / 6) * size, to[1] - Math.sin(angle + Math.PI / 6) * size];
+    context.save(); context.strokeStyle = stroke; context.fillStyle = stroke; context.lineWidth = element.strokeWidth; context.lineCap = "round"; context.beginPath();
+    if (type === "circle") { context.arc(to[0], to[1], size / 3, 0, Math.PI * 2); context.fill(); }
+    else if (type === "diamond") { const back = [to[0] - Math.cos(angle) * size, to[1] - Math.sin(angle) * size]; context.moveTo(to[0], to[1]); context.lineTo(...left); context.lineTo(back[0], back[1]); context.lineTo(...right); context.closePath(); context.fill(); }
+    else if (type === "bar") { const half = size / 2; context.moveTo(to[0] + Math.cos(angle + Math.PI / 2) * half, to[1] + Math.sin(angle + Math.PI / 2) * half); context.lineTo(to[0] - Math.cos(angle + Math.PI / 2) * half, to[1] - Math.sin(angle + Math.PI / 2) * half); context.stroke(); }
+    else { context.moveTo(...left); context.lineTo(to[0], to[1]); context.lineTo(...right); type === "triangle" ? (context.closePath(), context.fill()) : context.stroke(); }
+    context.restore();
   }
 
   private paintSelection(context: CanvasRenderingContext2D) {
@@ -1318,7 +1687,10 @@ export class WebDraw extends LitElement {
       const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       context.save(); context.translate(center.x, center.y); context.rotate((item as MutableElement).angle ?? 0); context.translate(-center.x, -center.y);
       context.strokeRect(box.x - gap, box.y - gap, box.width + gap * 2, box.height + gap * 2);
-      if (this.selectedIds.size === 1 && !(item as MutableElement).locked) {
+      if (item.id === this.editingLinearId && (item as MutableElement).points) {
+        context.fillStyle = this.theme === "dark" ? "#1e1e1e" : "#ffffff";
+        for (const [x, y] of (item as MutableElement).points) { context.beginPath(); context.arc(item.x + x, item.y + y, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke(); }
+      } else if (this.selectedIds.size === 1 && !(item as MutableElement).locked) {
         const handles = [[box.x - gap, box.y - gap], [center.x, box.y - gap], [box.x + box.width + gap, box.y - gap], [box.x + box.width + gap, center.y], [box.x + box.width + gap, box.y + box.height + gap], [center.x, box.y + box.height + gap], [box.x - gap, box.y + box.height + gap], [box.x - gap, center.y]];
         context.fillStyle = this.theme === "dark" ? "#1e1e1e" : "#ffffff";
         for (const [x, y] of handles) { context.fillRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); context.strokeRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); }
