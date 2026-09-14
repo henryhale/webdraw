@@ -57,6 +57,10 @@ const BACKGROUND_COLORS = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffe
 const NOTE_COLORS = ["#fff3bf", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffe066"];
 const DARK_STROKE_COLORS = ["#e3e3e8", "#ff8787", "#40c057", "#4dabf7", "#e67700"];
 const DARK_BACKGROUND_COLORS = ["transparent", "#5c2b29", "#1b5e20", "#194a66", "#5c3d00"];
+const CANVAS_COLORS = {
+  light: ["#ffffff", "#f8f9fa", "#f5faff", "#fff9db", "#fff5f5"],
+  dark: ["#121212", "#161819", "#15191c", "#1a1a05", "#1c1715"],
+} as const;
 
 export class WebDraw extends LitElement {
   static properties = {
@@ -78,6 +82,7 @@ export class WebDraw extends LitElement {
     contextMenu: { state: true },
     toolLocked: { state: true },
     propertiesOpen: { state: true },
+    preferencesOpen: { state: true },
     editingLinearId: { state: true },
     snapToObjects: { state: true },
     croppingImageId: { state: true },
@@ -101,12 +106,14 @@ export class WebDraw extends LitElement {
   contextMenu: Point | null = null;
   toolLocked = false;
   propertiesOpen = true;
+  preferencesOpen = false;
   editingLinearId: string | null = null;
   snapToObjects = false;
   croppingImageId: string | null = null;
 
   private canvas?: HTMLCanvasElement;
   private observer?: ResizeObserver;
+  private systemTheme?: MediaQueryList;
   private drag: Drag | null = null;
   private selectionRect: { start: Point; end: Point } | null = null;
   private pan = { x: 0, y: 0 };
@@ -149,12 +156,15 @@ export class WebDraw extends LitElement {
     this.setAttribute("aria-label", "Excalidraw canvas");
     this.addEventListener("keydown", this.onKeyDown);
     this.addEventListener("keyup", this.onKeyUp);
+    this.systemTheme = this.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)");
+    this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
   }
 
   disconnectedCallback() {
     this.observer?.disconnect();
     this.removeEventListener("keydown", this.onKeyDown);
     this.removeEventListener("keyup", this.onKeyUp);
+    this.systemTheme?.removeEventListener("change", this.onSystemThemeChange);
     super.disconnectedCallback();
   }
 
@@ -233,7 +243,7 @@ export class WebDraw extends LitElement {
   protected render() {
     const cursor = this.viewModeEnabled ? "default" : this.tool === "hand" ? "grab" : this.tool === "selection" ? "default" : this.tool === "text" ? "text" : "crosshair";
     return html`
-      <div class="excalidraw ${this.theme === "dark" ? "theme--dark" : ""}" dir="ltr"
+      <div class="excalidraw ${this.isDarkTheme() ? "theme--dark" : ""}" dir="ltr"
         style=${`--canvas-background: ${this.canvasColor}; --canvas-cursor: ${cursor}`}>
         <canvas class="excalidraw__canvas interactive" aria-label="Drawing canvas"
           @pointerdown=${this.onPointerDown} @pointermove=${this.onPointerMove}
@@ -331,21 +341,37 @@ export class WebDraw extends LitElement {
   }
 
   private renderMenu() {
+    const dark = this.isDarkTheme();
+    const colors = CANVAS_COLORS[dark ? "dark" : "light"];
+    const selectedCanvasColor = dark && this.canvasColor === "#ffffff" ? "#121212" : this.canvasColor;
+    const item = (name: Parameters<typeof icon>[0], label: string, action: () => void, shortcut = "") => html`
+      <button class=${`dropdown-menu__item ${name === "command" ? "emphasized" : ""}`} role="menuitem" @click=${action}>
+        <span class="dropdown-menu__icon">${icon(name)}</span><span>${label}</span>${shortcut ? html`<kbd>${shortcut}</kbd>` : nothing}
+      </button>`;
     return html`
       <div class="Island dropdown-menu" role="menu">
-        <button role="menuitem" @click=${() => this.querySelector<HTMLInputElement>(".scene-input")?.click()}>Open</button>
-        <button role="menuitem" @click=${this.saveScene}>Save to current file</button>
-        <button role="menuitem" @click=${this.saveScene}>Save to...</button>
-        <button role="menuitem" @click=${() => { this.dialog = "export"; this.menuOpen = false; }}>Export image...</button>
-        <button role="menuitem" @click=${() => { this.dialog = "search"; this.menuOpen = false; }}>Find on canvas <kbd>Ctrl+F</kbd></button>
-        <button role="menuitem" @click=${() => { this.dialog = "help"; this.menuOpen = false; }}>Help <kbd>?</kbd></button>
+        ${item("open", "Open", () => this.querySelector<HTMLInputElement>(".scene-input")?.click(), "Ctrl+O")}
+        ${item("save", "Save to...", this.saveScene)}
+        ${item("export", "Export image...", () => { this.dialog = "export"; this.menuOpen = false; }, "Ctrl+Shift+E")}
+        ${item("command", "Command palette", () => { this.searchQuery = ""; this.dialog = "commands"; this.menuOpen = false; }, "Ctrl+/")}
+        ${item("search", "Find on canvas", () => { this.dialog = "search"; this.menuOpen = false; }, "Ctrl+F")}
+        ${item("help", "Help", () => { this.dialog = "help"; this.menuOpen = false; }, "?")}
+        ${item("delete", "Reset the canvas", this.confirmReset)}
         <span class="dropdown-separator"></span>
-        <button role="menuitem" @click=${this.confirmReset}>Reset the canvas</button>
-        <span class="dropdown-separator"></span>
-        <button role="menuitemcheckbox" aria-checked=${this.gridModeEnabled} @click=${() => this.gridModeEnabled = !this.gridModeEnabled}>Grid mode <span>${this.gridModeEnabled ? "✓" : ""}</span></button>
-        <button role="menuitemcheckbox" aria-checked=${this.snapToObjects} @click=${() => this.snapToObjects = !this.snapToObjects}>Snap to objects <span>${this.snapToObjects ? "✓" : ""}</span></button>
-        <button role="menuitem" @click=${this.toggleTheme}>${this.theme === "dark" ? "Light" : "Dark"} mode</button>
-        <label class="canvas-color">Canvas background <input type="color" .value=${this.canvasColor} @input=${this.onCanvasColor}></label>
+        <button class="dropdown-menu__item preferences-trigger" role="menuitem" aria-expanded=${this.preferencesOpen} @click=${() => this.preferencesOpen = !this.preferencesOpen}>
+          <span class="dropdown-menu__icon">${icon("preferences")}</span><span>Preferences</span><span class=${`preferences-chevron ${this.preferencesOpen ? "open" : ""}`}>${icon("chevron")}</span>
+        </button>
+        ${this.preferencesOpen ? html`<div class="preference-options">
+          <button role="menuitemcheckbox" aria-checked=${this.gridModeEnabled} @click=${() => this.gridModeEnabled = !this.gridModeEnabled}><span>Grid mode</span><span>${this.gridModeEnabled ? "✓" : ""}</span></button>
+          <button role="menuitemcheckbox" aria-checked=${this.snapToObjects} @click=${() => this.snapToObjects = !this.snapToObjects}><span>Snap to objects</span><span>${this.snapToObjects ? "✓" : ""}</span></button>
+        </div>` : nothing}
+        <div class="menu-setting theme-setting"><span>Theme</span><span class="theme-options">
+          ${(["light", "dark", "auto"] as const).map((theme) => html`<button class=${this.theme === theme ? "selected" : ""} title=${theme === "auto" ? "System theme" : `${theme[0].toUpperCase()}${theme.slice(1)} theme`} aria-label=${theme} aria-pressed=${this.theme === theme} @click=${() => this.setTheme(theme)}>${icon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor")}</button>`)}
+        </span></div>
+        <div class="menu-setting canvas-background"><span>Canvas background</span><span class="canvas-background__colors">
+          ${colors.map((color) => html`<button class=${selectedCanvasColor === color ? "selected" : ""} style=${`--canvas-swatch:${color}`} title=${color} aria-label=${`Canvas background ${color}`} @click=${() => this.setCanvasColor(color)}></button>`)}
+          <input type="color" .value=${selectedCanvasColor} aria-label="Custom canvas background" @input=${this.onCanvasColor}>
+        </span></div>
       </div>`;
   }
 
@@ -480,8 +506,8 @@ export class WebDraw extends LitElement {
       </span>`;
     return html`
       <div class="Island selected-shape-actions">
-        <label>${sticky ? "Text color" : "Stroke"}${palette(this.theme === "dark" ? DARK_STROKE_COLORS : STROKE_COLORS, this.strokeColor, this.setStrokeColor)}</label>
-        ${textOnly ? nothing : html`<label>Background${palette(sticky ? (this.theme === "dark" ? DARK_BACKGROUND_COLORS.slice(1) : NOTE_COLORS) : (this.theme === "dark" ? DARK_BACKGROUND_COLORS : BACKGROUND_COLORS), this.backgroundColor, this.setBackground, !sticky)}</label>`}
+        <label>${sticky ? "Text color" : "Stroke"}${palette(this.isDarkTheme() ? DARK_STROKE_COLORS : STROKE_COLORS, this.strokeColor, this.setStrokeColor)}</label>
+        ${textOnly ? nothing : html`<label>Background${palette(sticky ? (this.isDarkTheme() ? DARK_BACKGROUND_COLORS.slice(1) : NOTE_COLORS) : (this.isDarkTheme() ? DARK_BACKGROUND_COLORS : BACKGROUND_COLORS), this.backgroundColor, this.setBackground, !sticky)}</label>`}
         ${textOnly || sticky || linear ? nothing : html`
           <label>Fill <span class="segmented wide">${(["hachure", "cross-hatch", "solid"] as const).map((style) => html`<button title=${style} class=${this.fillStyle === style ? "selected" : ""} @click=${() => this.setFillStyle(style)}>${style === "hachure" ? "╱" : style === "cross-hatch" ? "╳" : "■"}</button>`)}</span></label>`}
         ${textOnly || sticky ? nothing : html`
@@ -508,7 +534,7 @@ export class WebDraw extends LitElement {
     if (this.viewModeEnabled) return;
     if (this.pendingLinearId) this.finishPendingLinear();
     this.tool = tool;
-    if (tool === "stickynote") this.backgroundColor = this.theme === "dark" ? "#5c3d00" : "#fff3bf";
+    if (tool === "stickynote") this.backgroundColor = this.isDarkTheme() ? "#5c3d00" : "#fff3bf";
     if (tool !== "selection") this.selectedIds = new Set();
     if (this.canvas) this.canvas.style.cursor = "";
     this.focus();
@@ -571,7 +597,7 @@ export class WebDraw extends LitElement {
       const hit = this.hitTest(point);
       if (hit && !["text", "line", "arrow", "freedraw", "frame"].includes(hit.type)) {
         this.selectedIds = new Set([hit.id]);
-        this.setBackground(this.backgroundColor === "transparent" ? (this.theme === "dark" ? "#194a66" : "#a5d8ff") : this.backgroundColor);
+        this.setBackground(this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#194a66" : "#a5d8ff") : this.backgroundColor);
       }
       return;
     }
@@ -633,7 +659,7 @@ export class WebDraw extends LitElement {
     } else if (tool === "embeddable") {
       element = newEmbeddableElement({ ...base, type: "embeddable" }) as WebdrawElement;
     } else if (tool === "stickynote") {
-      element = newElement({ ...base, type: "rectangle", strokeColor: this.strokeColor, backgroundColor: this.backgroundColor === "transparent" ? (this.theme === "dark" ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", customData: { webdrawSticky: true, webdrawRound: true, stickyCreated: Date.now() } }) as WebdrawElement;
+      element = newElement({ ...base, type: "rectangle", strokeColor: this.strokeColor, backgroundColor: this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", customData: { webdrawSticky: true, webdrawRound: true, stickyCreated: Date.now() } }) as WebdrawElement;
     } else {
       element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse" }) as WebdrawElement;
     }
@@ -1142,7 +1168,10 @@ export class WebDraw extends LitElement {
   }
 
   private setZoom(value: number) { this.zoom = Math.min(30, Math.max(.1, Math.round(value * 10) / 10)); }
-  private toggleTheme = () => { this.theme = this.theme === "dark" ? "light" : "dark"; this.strokeColor = this.theme === "dark" ? "#e3e3e8" : "#1b1b1f"; this.menuOpen = false; };
+  private isDarkTheme() { return this.theme === "dark" || (this.theme === "auto" && !!this.systemTheme?.matches); }
+  private setTheme(theme: WebdrawTheme) { this.theme = theme; this.strokeColor = this.isDarkTheme() ? "#e3e3e8" : "#1b1b1f"; this.requestUpdate(); }
+  private toggleTheme = () => this.setTheme(this.isDarkTheme() ? "light" : "dark");
+  private onSystemThemeChange = () => { if (this.theme === "auto") { this.requestUpdate(); this.paint(); } };
   private confirmReset = () => {
     if (!this.elements.length || this.ownerDocument.defaultView?.confirm("This will clear the whole canvas. Are you sure?")) { this.resetScene(); this.menuOpen = false; }
   };
@@ -1188,7 +1217,8 @@ export class WebDraw extends LitElement {
     this.elements = this.elements.map((item) => ids.has(item.id) ? { ...item, opacity: this.opacity, version: item.version + 1 } as WebdrawElement : item);
     this.emitChange(); this.requestUpdate();
   };
-  private onCanvasColor = (event: InputEvent) => { this.canvasColor = (event.target as HTMLInputElement).value; this.requestUpdate(); };
+  private setCanvasColor(value: string) { this.canvasColor = value; this.requestUpdate(); }
+  private onCanvasColor = (event: InputEvent) => this.setCanvasColor((event.target as HTMLInputElement).value);
 
   private updateTextStyle(patch: Record<string, unknown>) {
     const ids = new Set<string>();
@@ -1567,7 +1597,7 @@ export class WebDraw extends LitElement {
     if (!context) return;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, rect.width, rect.height);
-    context.fillStyle = this.theme === "dark" && this.canvasColor === "#ffffff" ? "#121212" : this.canvasColor;
+    context.fillStyle = this.isDarkTheme() && this.canvasColor === "#ffffff" ? "#121212" : this.canvasColor;
     context.fillRect(0, 0, rect.width, rect.height);
     if (this.gridModeEnabled) this.paintGrid(context, rect.width, rect.height);
     context.save();
@@ -1581,14 +1611,14 @@ export class WebDraw extends LitElement {
 
   private paintGrid(context: CanvasRenderingContext2D, width: number, height: number) {
     const step = 20 * this.zoom;
-    context.save(); context.strokeStyle = this.theme === "dark" ? "#2e2d39" : "#e7e7ed"; context.lineWidth = 1;
+    context.save(); context.strokeStyle = this.isDarkTheme() ? "#2e2d39" : "#e7e7ed"; context.lineWidth = 1;
     context.beginPath();
     for (let x = ((this.pan.x % step) + step) % step; x < width; x += step) { context.moveTo(x, 0); context.lineTo(x, height); }
     for (let y = ((this.pan.y % step) + step) % step; y < height; y += step) { context.moveTo(0, y); context.lineTo(width, y); }
     context.stroke(); context.restore();
   }
 
-  private paintElement(context: CanvasRenderingContext2D, roughCanvas: ReturnType<typeof rough.canvas>, element: MutableElement, darkMode = this.theme === "dark") {
+  private paintElement(context: CanvasRenderingContext2D, roughCanvas: ReturnType<typeof rough.canvas>, element: MutableElement, darkMode = this.isDarkTheme()) {
     if (this.editingText?.elementId === element.id) return;
     const stroke = darkMode && element.strokeColor === "#1b1b1f" ? "#e3e3e8" : element.strokeColor;
     const options = { stroke, strokeWidth: element.strokeWidth, strokeLineDash: element.strokeStyle === "dashed" ? [8, 8] : element.strokeStyle === "dotted" ? [2, 5] : undefined, roughness: element.roughness, seed: element.seed, fill: element.backgroundColor === "transparent" ? undefined : element.backgroundColor, fillStyle: element.fillStyle };
@@ -1694,11 +1724,11 @@ export class WebDraw extends LitElement {
       context.save(); context.translate(center.x, center.y); context.rotate((item as MutableElement).angle ?? 0); context.translate(-center.x, -center.y);
       context.strokeRect(box.x - gap, box.y - gap, box.width + gap * 2, box.height + gap * 2);
       if (item.id === this.editingLinearId && (item as MutableElement).points) {
-        context.fillStyle = this.theme === "dark" ? "#1e1e1e" : "#ffffff";
+        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
         for (const [x, y] of (item as MutableElement).points) { context.beginPath(); context.arc(item.x + x, item.y + y, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke(); }
       } else if (this.selectedIds.size === 1 && !(item as MutableElement).locked) {
         const handles = [[box.x - gap, box.y - gap], [center.x, box.y - gap], [box.x + box.width + gap, box.y - gap], [box.x + box.width + gap, center.y], [box.x + box.width + gap, box.y + box.height + gap], [center.x, box.y + box.height + gap], [box.x - gap, box.y + box.height + gap], [box.x - gap, center.y]];
-        context.fillStyle = this.theme === "dark" ? "#1e1e1e" : "#ffffff";
+        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
         for (const [x, y] of handles) { context.fillRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); context.strokeRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); }
         const rotateY = box.y - gap - 24 / this.zoom; context.beginPath(); context.moveTo(center.x, box.y - gap); context.lineTo(center.x, rotateY); context.stroke(); context.beginPath(); context.arc(center.x, rotateY, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke();
       }

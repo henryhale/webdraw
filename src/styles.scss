@@ -328,6 +328,96 @@ web-draw {
   input[type="color"] { width: 1.6rem; height: 1.6rem; padding: 2px; border: 0; border-radius: .25rem; background: transparent; }
 }
 
+.dropdown-menu {
+  width: min(23rem, calc(100vw - 2rem));
+  padding: .75rem;
+
+  .dropdown-menu__item {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    min-height: 3.25rem;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    font-size: 1rem;
+    font-weight: 400;
+  }
+
+  .dropdown-menu__item > span:nth-child(2) { text-align: left; }
+  .dropdown-menu__item.emphasized { color: var(--color-primary-darker); font-weight: 600; }
+  .dropdown-menu__icon, .preferences-chevron { display: grid; place-items: center; }
+  .dropdown-menu__icon svg, .preferences-chevron svg { width: 1.25rem; height: 1.25rem; }
+  .preferences-chevron { transition: transform .15s ease; }
+  .preferences-chevron.open { transform: rotate(90deg); }
+  kbd { padding: 0; color: var(--keybinding-color); background: transparent; font-size: .875rem; font-weight: 400; }
+  .dropdown-separator { margin: .35rem 0; }
+
+  .preference-options {
+    display: grid;
+    padding: 0 .75rem .35rem 3rem;
+
+    button {
+      min-height: 2rem;
+      padding: .25rem .5rem;
+      font-size: .875rem;
+    }
+  }
+
+  .menu-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .6rem .75rem;
+    font-size: 1rem;
+  }
+
+  .theme-options {
+    display: flex;
+    gap: .125rem;
+    padding: .2rem;
+    border: 1px solid var(--default-border-color);
+    border-radius: .75rem;
+    background: var(--color-surface-low);
+
+    button {
+      display: grid;
+      width: 2.5rem;
+      min-height: 2.5rem;
+      padding: 0;
+      place-items: center;
+      border-radius: .55rem;
+    }
+
+    button.selected { color: var(--color-on-primary-container); background: var(--color-surface-primary-container); }
+    svg { width: 1.25rem; height: 1.25rem; }
+  }
+
+  .canvas-background {
+    display: grid;
+    justify-content: stretch;
+    gap: .65rem;
+  }
+
+  .canvas-background__colors {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+
+    button, input {
+      width: 2.5rem;
+      height: 2.5rem;
+      min-height: 2.5rem;
+      padding: .15rem;
+      border: 1px solid var(--default-border-color);
+      border-radius: .5rem;
+      background: var(--canvas-swatch, transparent);
+    }
+
+    button.selected { box-shadow: 0 0 0 2px var(--button-active-border); }
+    input { margin-left: .25rem; }
+  }
+}
+
 .extra-tools-menu {
   top: calc(100% + .5rem);
   right: 0;

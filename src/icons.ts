@@ -1,6 +1,6 @@
 import { svg, type TemplateResult } from "lit";
 
-export type IconName = "hand" | "selection" | "rectangle" | "diamond" | "ellipse" | "arrow" | "line" | "freedraw" | "text" | "eraser" | "frame" | "image" | "embeddable" | "stickynote" | "laser" | "bucket" | "menu" | "library" | "undo" | "redo" | "help" | "more" | "search" | "export" | "close" | "lock" | "duplicate" | "delete" | "link" | "sendBack" | "sendBackward" | "bringForward" | "bringFront";
+export type IconName = "hand" | "selection" | "rectangle" | "diamond" | "ellipse" | "arrow" | "line" | "freedraw" | "text" | "eraser" | "frame" | "image" | "embeddable" | "stickynote" | "laser" | "bucket" | "menu" | "library" | "undo" | "redo" | "help" | "more" | "search" | "export" | "close" | "lock" | "duplicate" | "delete" | "link" | "sendBack" | "sendBackward" | "bringForward" | "bringFront" | "open" | "save" | "command" | "preferences" | "sun" | "moon" | "monitor" | "chevron";
 
 const svgIcon = (body: TemplateResult) => svg`
   <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none"
@@ -43,6 +43,14 @@ export const icon = (name: IconName) => {
     case "sendBackward": return svgIcon(svg`<path d="M12 4v14m-4-4 4 4 4-4"/>`);
     case "bringForward": return svgIcon(svg`<path d="M12 20V6m-4 4 4-4 4 4"/>`);
     case "bringFront": return svgIcon(svg`<path d="M12 20V7m-4 4 4-4 4 4M5 3h14"/>`);
+    case "open": return svgIcon(svg`<path d="M3 19V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10H3Z"/>`);
+    case "save": return svgIcon(svg`<path d="M12 3v12m-4-4 4 4 4-4M5 20h14"/>`);
+    case "command": return svgIcon(svg`<path d="m13 2-9 12h7l-1 8 10-13h-7V2Z"/>`);
+    case "preferences": return svgIcon(svg`<path d="M4 6h8m4 0h4M4 12h3m4 0h9M4 18h10m4 0h2"/><circle cx="14" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="18" r="2"/>`);
+    case "sun": return svgIcon(svg`<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>`);
+    case "moon": return svgIcon(svg`<path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/>`);
+    case "monitor": return svgIcon(svg`<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8m-4-4v4"/>`);
+    case "chevron": return svgIcon(svg`<path d="m9 6 6 6-6 6"/>`);
   }
 };
 
