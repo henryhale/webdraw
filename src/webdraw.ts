@@ -129,12 +129,18 @@ const encodeSceneMetadata = (scene: string) => {
   return JSON.stringify({ version: "1", encoding: "bstring", compressed: false, encoded });
 };
 
+const cursorForHandle = (handle: ResizeHandle, angle = 0) => {
+  const direction = { e: 0, w: 0, se: 1, nw: 1, s: 2, n: 2, sw: 3, ne: 3 }[handle];
+  return ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"][((direction + Math.round(angle / (Math.PI / 4))) % 4 + 4) % 4];
+};
+
 if (import.meta.env.DEV) {
   const bounds = normalizeBounds({ x: 10, y: 20 }, { x: 2, y: 5 });
   console.assert(bounds.x === 2 && bounds.y === 5 && bounds.width === 8 && bounds.height === 15);
   const rotated = rotatePoint({ x: 1, y: 0 }, { x: 0, y: 0 }, Math.PI / 2);
   console.assert(Math.abs(rotated.x) < 1e-10 && Math.abs(rotated.y - 1) < 1e-10);
   console.assert(JSON.parse(encodeSceneMetadata("✓")).encoded.length === 3);
+  console.assert(cursorForHandle("e") === "ew-resize" && cursorForHandle("e", Math.PI / 2) === "ns-resize");
 }
 
 export class WebDraw extends LitElement {
@@ -292,6 +298,7 @@ export class WebDraw extends LitElement {
         <canvas class="excalidraw__canvas interactive" aria-label="Drawing canvas"
           @pointerdown=${this.onPointerDown} @pointermove=${this.onPointerMove}
           @pointerup=${this.onPointerUp} @pointercancel=${this.onPointerUp}
+          @pointerleave=${this.onPointerLeave}
           @dblclick=${this.onDoubleClick} @contextmenu=${this.onContextMenu} @wheel=${this.onWheel}></canvas>
         <div class="webdraw-embeds">${this.elements.filter((item) => item.type === "embeddable").map((item) => {
           const element = item as MutableElement, url = this.getEmbedUrl(element);
@@ -520,6 +527,7 @@ export class WebDraw extends LitElement {
     if (this.viewModeEnabled) return;
     this.tool = tool;
     if (tool !== "selection") this.selectedIds = new Set();
+    if (this.canvas) this.canvas.style.cursor = "";
     this.focus();
   }
 
@@ -559,6 +567,7 @@ export class WebDraw extends LitElement {
         this.drag = transform === "rotate"
           ? { mode: "rotate", start: point, last: point, element, startAngle: Math.atan2(point.y - center.y, point.x - center.x) }
           : { mode: "resize", start: point, last: point, element, handle: transform };
+        this.canvas!.style.cursor = transform === "rotate" ? "grabbing" : cursorForHandle(transform, element.angle);
         return;
       }
       const hit = this.hitTest(point);
@@ -606,7 +615,12 @@ export class WebDraw extends LitElement {
   };
 
   private onPointerMove = (event: PointerEvent) => {
-    if (!this.drag) return;
+    if (!this.drag) {
+      const handle = this.tool === "selection" ? this.selectionHandleAt(this.scenePoint(event)) : null;
+      const selected = handle && handle !== "rotate" ? this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined : undefined;
+      this.canvas!.style.cursor = handle === "rotate" ? "grab" : handle ? cursorForHandle(handle, selected?.angle) : "";
+      return;
+    }
     if (this.drag.mode === "pan") {
       this.pan = { x: this.drag.pan!.x + event.clientX - this.drag.last.x, y: this.drag.pan!.y + event.clientY - this.drag.last.y };
       this.requestUpdate();
@@ -688,9 +702,12 @@ export class WebDraw extends LitElement {
     }
     this.drag = null;
     this.selectionRect = null;
+    if (this.canvas) this.canvas.style.cursor = "";
     if (changed) this.emitChange();
     this.requestUpdate();
   };
+
+  private onPointerLeave = () => { if (!this.drag && this.canvas) this.canvas.style.cursor = ""; };
 
   private onDoubleClick = (event: MouseEvent) => {
     if (this.viewModeEnabled) return;
