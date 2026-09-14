@@ -419,10 +419,6 @@ export class WebDraw extends LitElement {
         ${item("embeddable", "Web Embed")}
         ${item("stickynote", "Sticky note")}
         ${item("laser", "Laser pointer", "K")}
-        <span class="dropdown-separator"></span>
-        <div class="dropdown-heading">Generate</div>
-        <button role="menuitem" @click=${() => this.dispatchEvent(new CustomEvent("webdraw-text-to-diagram", { bubbles: true, composed: true }))}><span>Text to diagram</span><kbd>AI</kbd></button>
-        <button role="menuitem" @click=${() => this.dispatchEvent(new CustomEvent("webdraw-mermaid", { bubbles: true, composed: true }))}><span>Mermaid to Excalidraw</span></button>
       </div>`;
   }
 
