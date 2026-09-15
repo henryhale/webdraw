@@ -3,7 +3,7 @@ import rough from "roughjs/bin/rough";
 import pngText from "png-chunk-text";
 import encodePng from "png-chunks-encode";
 import extractPng from "png-chunks-extract";
-import { FONT_FAMILY, FRAME_STYLE, ROUNDNESS, COLOR_PALETTE, DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX, LIBRARY_DISABLED_TYPES, EXPORT_DATA_TYPES, VERSIONS, MIME_TYPES } from "@excalidraw/common";
+import { FONT_FAMILY, FRAME_STYLE, ROUNDNESS, COLOR_PALETTE, DEFAULT_ELEMENT_PROPS, DEFAULT_ELEMENT_STROKE_PICKS, DEFAULT_ELEMENT_BACKGROUND_PICKS, STICKY_NOTE_BACKGROUND_PICKS, DEFAULT_STICKY_NOTE_BG, applyDarkModeFilter, DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX, LIBRARY_DISABLED_TYPES, EXPORT_DATA_TYPES, VERSIONS, MIME_TYPES } from "@excalidraw/common";
 import {
   FlowChartNavigator,
   deepCopyElement,
@@ -98,11 +98,6 @@ const TOOL_META: readonly [Tool, string, string][] = [
   ["eraser", "Eraser (E or 0)", "0"],
 ];
 
-const STROKE_COLORS = ["#1b1b1f", "#e03131", "#2f9e44", "#1971c2", "#f08c00"];
-const BACKGROUND_COLORS = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffec99"];
-const NOTE_COLORS = ["#fff3bf", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffe066"];
-const DARK_STROKE_COLORS = ["#e3e3e8", "#ff8787", "#40c057", "#4dabf7", "#e67700"];
-const DARK_BACKGROUND_COLORS = ["transparent", "#5c2b29", "#1b5e20", "#194a66", "#5c3d00"];
 const CANVAS_COLORS = {
   light: ["#ffffff", "#f8f9fa", "#f5faff", "#fff9db", "#fff5f5"],
   dark: ["#121212", "#161819", "#15191c", "#1a1a05", "#1c1715"],
@@ -171,7 +166,7 @@ export class WebDraw extends LitElement {
   private pan = { x: 0, y: 0 };
   private history: WebdrawElement[][] = [];
   private future: WebdrawElement[][] = [];
-  private strokeColor = "#1b1b1f";
+  private strokeColor = DEFAULT_ELEMENT_PROPS.strokeColor;
   private backgroundColor = "transparent";
   private canvasColor = "#ffffff";
   private strokeWidth = 2;
@@ -214,7 +209,6 @@ export class WebDraw extends LitElement {
     this.addEventListener("keyup", this.onKeyUp);
     this.systemTheme = this.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)");
     this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
-    if (this.theme === "auto") this.strokeColor = this.systemTheme?.matches ? "#e3e3e8" : "#1b1b1f";
     try {
       const saved = this.ownerDocument.defaultView?.localStorage.getItem("webdraw-library");
       if (saved) {
@@ -589,16 +583,16 @@ export class WebDraw extends LitElement {
     const text = textOnly || sticky || !!(selected && this.boundLabel(selected));
     const linear = selected?.type === "arrow" || this.tool === "arrow";
     const locked = this.elements.some((item) => this.selectedIds.has(item.id) && item.locked);
-    const palette = (colors: string[], current: string, set: (color: string) => void, allowTransparent = false) => html`
+    const palette = (colors: readonly string[], current: string, set: (color: string) => void, allowTransparent = false) => html`
       <span class="color-palette">
         ${allowTransparent ? html`<button class="color-swatch transparent ${current === "transparent" ? "selected" : ""}" title="Transparent" aria-label="Transparent" @click=${() => set("transparent")}>×</button>` : nothing}
-        ${colors.filter((color) => color !== "transparent").map((color) => html`<button class="color-swatch ${current === color ? "selected" : ""}" style=${`--swatch:${color}`} title=${color} aria-label=${color} @click=${() => set(color)}></button>`)}
+        ${colors.filter((color) => color !== "transparent").map((color) => html`<button class="color-swatch ${current === color ? "selected" : ""}" style=${`--swatch:${applyDarkModeFilter(color, this.isDarkTheme())}`} title=${color} aria-label=${color} @click=${() => set(color)}></button>`)}
         <input class="color-swatch custom-color" type="color" .value=${current === "transparent" ? "#ffffff" : current} aria-label="Custom color" @input=${(event: InputEvent) => set((event.target as HTMLInputElement).value)}>
       </span>`;
     return html`
       <div class="Island selected-shape-actions">
-        <label>${sticky ? "Text color" : "Stroke"}${palette(this.isDarkTheme() ? DARK_STROKE_COLORS : STROKE_COLORS, this.strokeColor, this.setStrokeColor)}</label>
-        ${textOnly ? nothing : html`<label>Background${palette(sticky ? (this.isDarkTheme() ? DARK_BACKGROUND_COLORS.slice(1) : NOTE_COLORS) : (this.isDarkTheme() ? DARK_BACKGROUND_COLORS : BACKGROUND_COLORS), this.backgroundColor, this.setBackground, !sticky)}</label>`}
+        <label>${sticky ? "Text color" : "Stroke"}${palette(DEFAULT_ELEMENT_STROKE_PICKS, this.strokeColor, this.setStrokeColor)}</label>
+        ${textOnly ? nothing : html`<label>Background${palette(sticky ? STICKY_NOTE_BACKGROUND_PICKS : DEFAULT_ELEMENT_BACKGROUND_PICKS, this.backgroundColor, this.setBackground, !sticky)}</label>`}
         ${textOnly || sticky || linear ? nothing : html`
           <label>Fill <span class="segmented wide">${(["hachure", "cross-hatch", "solid"] as const).map((style) => html`<button title=${style} class=${this.fillStyle === style ? "selected" : ""} @click=${() => this.setFillStyle(style)}>${style === "hachure" ? "╱" : style === "cross-hatch" ? "╳" : "■"}</button>`)}</span></label>`}
         ${textOnly || sticky ? nothing : html`
@@ -625,7 +619,7 @@ export class WebDraw extends LitElement {
     if (this.viewModeEnabled) return;
     if (this.pendingLinearId) this.finishPendingLinear();
     this.tool = tool;
-    if (tool === "stickynote") this.backgroundColor = this.isDarkTheme() ? "#5c3d00" : "#fff3bf";
+    if (tool === "stickynote") this.backgroundColor = DEFAULT_STICKY_NOTE_BG;
     if (tool !== "selection") this.selectedIds = new Set();
     if (this.canvas) this.canvas.style.cursor = "";
     this.focus();
@@ -754,7 +748,7 @@ export class WebDraw extends LitElement {
     } else if (tool === "embeddable") {
       element = newEmbeddableElement({ ...base, type: "embeddable" }) as WebdrawElement;
     } else if (tool === "stickynote") {
-      element = newStickyNoteElement({ ...base, type: "stickynote", backgroundColor: this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", roundness: { type: ROUNDNESS.ADAPTIVE_RADIUS } }) as WebdrawElement;
+      element = newStickyNoteElement({ ...base, type: "stickynote", backgroundColor: this.backgroundColor === "transparent" ? DEFAULT_STICKY_NOTE_BG : this.backgroundColor, fillStyle: "solid", roundness: { type: ROUNDNESS.ADAPTIVE_RADIUS } }) as WebdrawElement;
     } else {
       element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse" }) as WebdrawElement;
     }
@@ -1191,11 +1185,10 @@ export class WebDraw extends LitElement {
 
   private setZoom(value: number) { this.zoom = Math.min(30, Math.max(.1, Math.round(value * 10) / 10)); }
   private isDarkTheme() { return this.theme === "dark" || (this.theme === "auto" && !!this.systemTheme?.matches); }
-  private setTheme(theme: WebdrawTheme) { this.theme = theme; this.strokeColor = this.isDarkTheme() ? "#e3e3e8" : "#1b1b1f"; this.requestUpdate(); }
+  private setTheme(theme: WebdrawTheme) { this.theme = theme; this.requestUpdate(); }
   private toggleTheme = () => this.setTheme(this.isDarkTheme() ? "light" : "dark");
   private onSystemThemeChange = () => {
     if (this.theme !== "auto") return;
-    if (this.strokeColor === "#1b1b1f" || this.strokeColor === "#e3e3e8") this.strokeColor = this.systemTheme?.matches ? "#e3e3e8" : "#1b1b1f";
     this.requestUpdate(); this.paint();
   };
   private confirmReset = () => {
@@ -1222,7 +1215,7 @@ export class WebDraw extends LitElement {
     }
     this.requestUpdate();
   };
-  private setBackground(value: string) { this.backgroundColor = value; this.updateSelected({ backgroundColor: value }); this.requestUpdate(); }
+  private setBackground = (value: string) => { this.backgroundColor = value; this.updateSelected({ backgroundColor: value }); this.requestUpdate(); };
   private setFillStyle(value: typeof this.fillStyle) { this.fillStyle = value; this.updateSelected({ fillStyle: value }); this.requestUpdate(); }
   private setStrokeWidth(value: number) { this.strokeWidth = value; this.updateSelected({ strokeWidth: value }); this.requestUpdate(); }
   private setStrokeStyle(value: typeof this.strokeStyle) { this.strokeStyle = value; this.updateSelected({ strokeStyle: value }); this.requestUpdate(); }
@@ -1780,8 +1773,8 @@ export class WebDraw extends LitElement {
         context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
         for (const bounds of Object.values(elementTransformHandles(item, this.elements, this.zoom))) {
           if (!bounds) continue;
-          const [x1, y1, x2, y2] = bounds;
-          context.fillRect(x1, y1, x2 - x1, y2 - y1); context.strokeRect(x1, y1, x2 - x1, y2 - y1);
+          const [x, y, width, height] = bounds;
+          context.fillRect(x, y, width, height); context.strokeRect(x, y, width, height);
         }
       }
     }
@@ -1791,8 +1784,8 @@ export class WebDraw extends LitElement {
       context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
       for (const bounds of Object.values(selectionTransformHandles(selected, this.elements, this.zoom))) {
         if (!bounds) continue;
-        const [x1, y1, x2, y2] = bounds;
-        context.fillRect(x1, y1, x2 - x1, y2 - y1); context.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        const [x, y, width, height] = bounds;
+        context.fillRect(x, y, width, height); context.strokeRect(x, y, width, height);
       }
     }
     if (this.selectionRect) { const box = normalizeBounds(this.selectionRect.start, this.selectionRect.end); context.fillStyle = "rgba(105,101,219,.08)"; context.fillRect(box.x, box.y, box.width, box.height); context.setLineDash([4 / this.zoom, 4 / this.zoom]); context.strokeRect(box.x, box.y, box.width, box.height); }
@@ -1801,6 +1794,14 @@ export class WebDraw extends LitElement {
 }
 
 if (!customElements.get("web-draw")) customElements.define("web-draw", WebDraw);
+
+if (import.meta.env.DEV) {
+  const check = new WebDraw();
+  const setBackground = (check as any).setBackground as (color: string) => void;
+  setBackground("#ffc9c9");
+  console.assert((check as any).backgroundColor === "#ffc9c9");
+  console.assert((check as any).strokeColor === DEFAULT_ELEMENT_STROKE_PICKS[0]);
+}
 
 declare global {
   interface HTMLElementTagNameMap { "web-draw": WebDraw; }

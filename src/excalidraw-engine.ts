@@ -155,8 +155,8 @@ export const selectionTransformHandleAt = (
   const handles = selectionTransformHandles(selected, elements, zoom);
   for (const [name, bounds] of Object.entries(handles)) {
     if (!bounds) continue;
-    const [x1, y1, x2, y2] = bounds;
-    if (point.x >= x1 && point.x <= x2 && point.y >= y1 && point.y <= y2) {
+    const [x, y, width, height] = bounds;
+    if (point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height) {
       return name === "rotation" ? "rotate" : (name as ResizeHandle);
     }
   }
@@ -1015,5 +1015,13 @@ if (import.meta.env.DEV) {
   );
   console.assert(
     selectElementsWithinExcalidraw({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 } }, [rectangle]).has(rectangle.id),
+  );
+  const sizeable = newElement({ type: "rectangle", x: 10, y: 20, width: 100, height: 80 });
+  const northwest = selectionTransformHandles([sizeable], [sizeable], 1).nw;
+  console.assert(
+    northwest && selectionTransformHandleAt(
+      { x: northwest[0] + northwest[2] / 2, y: northwest[1] + northwest[3] / 2 },
+      [sizeable], [sizeable], 1,
+    ) === "nw",
   );
 }
