@@ -35,6 +35,8 @@ import {
   newElementWith,
 } from "@excalidraw/element";
 import { edgeIcon, icon, sloppinessIcon } from "./icons";
+import { LilitaFontFaces } from "./fonts/Lilita";
+import { XiaolaiFontFaces } from "./fonts/Xiaolai";
 import { SHORTCUT_GROUPS, shortcutFor } from "./shortcuts";
 import {
   elementBounds,
@@ -163,6 +165,7 @@ const CANVAS_COLORS = {
   light: ["#ffffff", "#f8f9fa", "#f5faff", "#fff9db", "#fff5f5"],
   dark: ["#121212", "#161819", "#15191c", "#1a1a05", "#1c1715"],
 } as const;
+const installedFonts = new WeakSet<Document>();
 
 const edgeRoundness = (type: string, round: boolean) =>
   round
@@ -288,6 +291,28 @@ export class WebDraw extends LitElement {
       "(prefers-color-scheme: dark)",
     );
     this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
+    this.ownerDocument.fonts.addEventListener(
+      "loadingdone",
+      this.onFontsLoaded,
+    );
+    if (!installedFonts.has(this.ownerDocument)) {
+      const moduleUrl = import.meta.url;
+      for (const [family, directory, faces] of [
+        ["Lilita One", "Lilita", LilitaFontFaces],
+        ["Xiaolai", "Xiaolai", XiaolaiFontFaces],
+      ] as const)
+        for (const { uri, descriptors } of faces) {
+          const url = new URL(`./fonts/${directory}/${uri}`, moduleUrl);
+          this.ownerDocument.fonts.add(
+            new FontFace(
+              family,
+              `url(${JSON.stringify(url.href)})`,
+              descriptors,
+            ),
+          );
+        }
+      installedFonts.add(this.ownerDocument);
+    }
     this.loadLibrary();
   }
 
@@ -296,6 +321,10 @@ export class WebDraw extends LitElement {
     this.removeEventListener("keydown", this.onKeyDown);
     this.removeEventListener("keyup", this.onKeyUp);
     this.systemTheme?.removeEventListener("change", this.onSystemThemeChange);
+    this.ownerDocument.fonts.removeEventListener(
+      "loadingdone",
+      this.onFontsLoaded,
+    );
     super.disconnectedCallback();
   }
 
@@ -1568,6 +1597,7 @@ export class WebDraw extends LitElement {
                     [FONT_FAMILY.Nunito, "A", "Normal"],
                     [FONT_FAMILY["Comic Shanns"], "‹/›", "Code"],
                     [FONT_FAMILY.Cascadia, "A", "Cascadia"],
+                    [FONT_FAMILY["Lilita One"], "L", "Lilita One"],
                   ] as const
                 ).map(
                   ([family, mark, title]) =>
@@ -3035,6 +3065,7 @@ export class WebDraw extends LitElement {
     this.requestUpdate();
     this.paint();
   };
+  private onFontsLoaded = () => this.paint();
   private confirmReset = () => {
     if (
       !this.elements.length ||
@@ -4155,6 +4186,8 @@ export class WebDraw extends LitElement {
   }
 
   private fontName(fontFamily: number) {
+    if (fontFamily === FONT_FAMILY["Lilita One"])
+      return "'Lilita One', sans-serif";
     if (fontFamily === FONT_FAMILY.Nunito)
       return "Nunito, Assistant, sans-serif";
     if (fontFamily === FONT_FAMILY["Comic Shanns"])
@@ -4165,7 +4198,7 @@ export class WebDraw extends LitElement {
       fontFamily === FONT_FAMILY.Assistant
     )
       return "Assistant, sans-serif";
-    return "Excalifont, Virgil, sans-serif";
+    return "Excalifont, Xiaolai, Virgil, sans-serif";
   }
 
   private paintSelection(context: CanvasRenderingContext2D) {
@@ -4247,6 +4280,10 @@ if (!customElements.get("web-draw")) customElements.define("web-draw", WebDraw);
 
 if (import.meta.env.DEV) {
   const check = new WebDraw();
+  console.assert(
+    (check as any).fontName(FONT_FAMILY["Lilita One"]).includes("Lilita One") &&
+      (check as any).fontName(FONT_FAMILY.Excalifont).includes("Xiaolai"),
+  );
   const setBackground = (check as any).setBackground as (color: string) => void;
   setBackground("#ffc9c9");
   console.assert((check as any).backgroundColor === "#ffc9c9");

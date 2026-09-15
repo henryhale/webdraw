@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && mkdir -p dist/fonts/Lilita dist/fonts/Xiaolai && cp src/fonts/Lilita/*.woff2 dist/fonts/Lilita && cp src/fonts/Xiaolai/*.woff2 dist/fonts/Xiaolai",
     "lint": "eslint src vite.config.ts",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
