@@ -16,9 +16,6 @@ import {
   applyDarkModeFilter,
   DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX,
   LIBRARY_DISABLED_TYPES,
-  EXPORT_DATA_TYPES,
-  VERSIONS,
-  MIME_TYPES,
 } from "@excalidraw/common";
 import {
   FlowChartNavigator,
@@ -111,9 +108,7 @@ export type {
 type MutableElement = WebdrawElement & Record<string, any>;
 type LibraryItem = {
   id: string;
-  status: "published" | "unpublished";
   elements: readonly WebdrawElement[];
-  created: number;
   name?: string;
 };
 type TextEdit = Point & {
@@ -184,6 +179,8 @@ export class WebDraw extends LitElement {
     viewModeEnabled: { type: Boolean, attribute: "view-mode", reflect: true },
     zenModeEnabled: { type: Boolean, attribute: "zen-mode", reflect: true },
     gridModeEnabled: { type: Boolean, attribute: "grid-mode", reflect: true },
+    library: { type: String },
+    storageKey: { type: String, attribute: "storage-key" },
     initialData: { attribute: false },
     elements: { attribute: false },
     tool: { state: true },
@@ -211,6 +208,8 @@ export class WebDraw extends LitElement {
   viewModeEnabled = false;
   zenModeEnabled = false;
   gridModeEnabled = false;
+  library: string | null = null;
+  storageKey = "webdraw-library";
   initialData?: WebdrawInitialData;
   elements: WebdrawElement[] = [];
   tool: Tool = "selection";
@@ -282,26 +281,14 @@ export class WebDraw extends LitElement {
     super.connectedCallback();
     this.tabIndex = 0;
     this.setAttribute("role", "application");
-    this.setAttribute("aria-label", "Excalidraw canvas");
+    this.setAttribute("aria-label", "Webdraw canvas");
     this.addEventListener("keydown", this.onKeyDown);
     this.addEventListener("keyup", this.onKeyUp);
     this.systemTheme = this.ownerDocument.defaultView?.matchMedia(
       "(prefers-color-scheme: dark)",
     );
     this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
-    try {
-      const saved =
-        this.ownerDocument.defaultView?.localStorage.getItem("webdraw-library");
-      if (saved) {
-        const items = JSON.parse(saved);
-        if (Array.isArray(items))
-          this.libraryItems = items.filter((item) =>
-            Array.isArray(item?.elements),
-          );
-      }
-    } catch {
-      /* Storage may be unavailable in embedded/private contexts. */
-    }
+    this.loadLibrary();
   }
 
   disconnectedCallback() {
@@ -323,6 +310,7 @@ export class WebDraw extends LitElement {
   }
 
   protected willUpdate(changes: PropertyValues<this>) {
+    if (changes.has("library") || changes.has("storageKey")) this.loadLibrary();
     if (changes.has("initialData") && this.initialData) {
       this.elements = structuredClone([...(this.initialData.elements ?? [])]);
       this.files = structuredClone(this.initialData.files ?? {});
@@ -453,12 +441,12 @@ export class WebDraw extends LitElement {
             ? "text"
             : "crosshair";
     return html` <div
-      class="excalidraw ${this.isDarkTheme() ? "theme--dark" : ""}"
+      class="webdraw ${this.isDarkTheme() ? "theme--dark" : ""}"
       dir="ltr"
       style=${`--canvas-background: ${this.canvasColor}; --canvas-cursor: ${cursor}`}
     >
       <canvas
-        class="excalidraw__canvas interactive"
+        class="webdraw__canvas interactive"
         aria-label="Drawing canvas"
         @pointerdown=${this.onPointerDown}
         @pointermove=${this.onPointerMove}
@@ -683,39 +671,9 @@ export class WebDraw extends LitElement {
                                 )}
                             </div>`
                           : html`<div class="library-empty">
-                              Select an item on canvas to add it here, or
-                              install a library from the public repository,
-                              below.
+                              Select an item on canvas to add it here, or pass a
+                              library through the library attribute.
                             </div>`}
-                        <div class="library-controls">
-                          <button
-                            @click=${() =>
-                              this.querySelector<HTMLInputElement>(
-                                ".library-file-input",
-                              )?.click()}
-                          >
-                            Import</button
-                          ><button
-                            @click=${this.exportLibrary}
-                            ?disabled=${!this.libraryItems.length}
-                          >
-                            Export
-                          </button>
-                        </div>
-                        <input
-                          class="library-file-input"
-                          type="file"
-                          accept=".excalidrawlib,application/vnd.excalidrawlib+json"
-                          hidden
-                          @change=${this.importLibrary}
-                        />
-                        <a
-                          class="library-browse"
-                          href="https://libraries.excalidraw.com"
-                          target="_blank"
-                          rel="noopener"
-                          >Browse libraries</a
-                        >
                       </aside>`
                     : nothing}
                 </div>
@@ -793,7 +751,7 @@ export class WebDraw extends LitElement {
       <input
         class="scene-input"
         type="file"
-        accept="application/json,.excalidraw"
+        accept="application/json,.webdraw"
         @change=${this.openScene}
       />
       <input
@@ -1003,7 +961,7 @@ export class WebDraw extends LitElement {
   private renderWelcome() {
     return html` <div class="welcome-screen-center">
         <div class="welcome-screen-center__logo">
-          <span class="welcome-logo-mark">E</span><strong>Excalidraw</strong>
+          <span class="welcome-logo-mark">W</span><strong>Webdraw</strong>
         </div>
         <div class="welcome-screen-center__heading">
           Diagrams. Made. Simple.
@@ -3277,7 +3235,7 @@ export class WebDraw extends LitElement {
     try {
       await this.ownerDocument.defaultView?.navigator.clipboard.writeText(
         JSON.stringify({
-          type: "excalidraw/clipboard",
+          type: "webdraw/clipboard",
           elements: this.clipboard,
           files,
         }),
@@ -3338,19 +3296,83 @@ export class WebDraw extends LitElement {
     this.commitText();
   }
 
+  private parseLibrary(raw: string): LibraryItem[] {
+    const data: unknown = JSON.parse(raw);
+    if (!Array.isArray(data)) throw new Error("Invalid Webdraw library");
+    return data.map((candidate: unknown) => {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        !Array.isArray((candidate as LibraryItem).elements) ||
+        !(candidate as LibraryItem).elements.every(
+          (element) =>
+            element &&
+            typeof element.id === "string" &&
+            typeof element.type === "string" &&
+            !LIBRARY_DISABLED_TYPES.has(element.type as never),
+        )
+      )
+        throw new Error("Invalid Webdraw library item");
+      const item = candidate as LibraryItem;
+      return {
+        id:
+          typeof item.id === "string" && item.id
+            ? item.id
+            : this.ownerDocument.defaultView!.crypto.randomUUID(),
+        elements: item.elements,
+        name: typeof item.name === "string" ? item.name : undefined,
+      };
+    });
+  }
+
+  private loadLibrary() {
+    let raw = this.library;
+    if (raw == null && this.storageKey) {
+      try {
+        raw =
+          this.ownerDocument.defaultView?.localStorage.getItem(
+            this.storageKey,
+          ) ?? null;
+      } catch {
+        /* Storage may be unavailable in embedded/private contexts. */
+      }
+    }
+    if (raw == null) {
+      this.libraryItems = [];
+      return;
+    }
+    try {
+      this.libraryItems = this.parseLibrary(raw || "[]");
+      this.emitLibraryChange();
+    } catch (error) {
+      this.dispatchEvent(
+        new CustomEvent("webdraw-error", {
+          detail: error,
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
   private saveLibrary(items: LibraryItem[]) {
     this.libraryItems = items;
     try {
-      this.ownerDocument.defaultView?.localStorage.setItem(
-        "webdraw-library",
-        JSON.stringify(items),
-      );
+      if (this.storageKey)
+        this.ownerDocument.defaultView?.localStorage.setItem(
+          this.storageKey,
+          JSON.stringify(items),
+        );
     } catch {
       /* The host can persist webdraw-library-change instead. */
     }
+    this.emitLibraryChange();
+  }
+
+  private emitLibraryChange() {
     this.dispatchEvent(
       new CustomEvent("webdraw-library-change", {
-        detail: { libraryItems: items },
+        detail: { libraryItems: this.libraryItems },
         bubbles: true,
         composed: true,
       }),
@@ -3375,11 +3397,9 @@ export class WebDraw extends LitElement {
     }
     const item: LibraryItem = {
       id: this.ownerDocument.defaultView!.crypto.randomUUID(),
-      status: "unpublished",
       elements: selected.map(
         (element) => deepCopyElement(element) as WebdrawElement,
       ),
-      created: Date.now(),
     };
     this.saveLibrary([item, ...this.libraryItems]);
   };
@@ -3421,73 +3441,6 @@ export class WebDraw extends LitElement {
   private removeLibraryItem(id: string) {
     this.saveLibrary(this.libraryItems.filter((item) => item.id !== id));
   }
-
-  private importLibrary = async (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      if (
-        data.type !== EXPORT_DATA_TYPES.excalidrawLibrary ||
-        ![1, 2].includes(data.version) ||
-        !Array.isArray(data.libraryItems ?? data.library)
-      )
-        throw new Error("Invalid Excalidraw library");
-      const items = (data.libraryItems ?? data.library).map(
-        (candidate: unknown) => {
-          const item = Array.isArray(candidate)
-            ? { elements: candidate }
-            : candidate;
-          if (
-            !item ||
-            typeof item !== "object" ||
-            !Array.isArray((item as LibraryItem).elements) ||
-            !(item as LibraryItem).elements.every(
-              (element) =>
-                element &&
-                typeof element.id === "string" &&
-                typeof element.type === "string",
-            )
-          )
-            throw new Error("Invalid library item");
-          return {
-            id:
-              (item as LibraryItem).id ||
-              this.ownerDocument.defaultView!.crypto.randomUUID(),
-            status:
-              (item as LibraryItem).status === "published"
-                ? "published"
-                : "unpublished",
-            elements: (item as LibraryItem).elements,
-            created: (item as LibraryItem).created || Date.now(),
-            name: (item as LibraryItem).name,
-          } as LibraryItem;
-        },
-      );
-      this.saveLibrary([...items, ...this.libraryItems]);
-    } catch (error) {
-      this.ownerDocument.defaultView?.alert(
-        error instanceof Error ? error.message : "Invalid Excalidraw library",
-      );
-    }
-    input.value = "";
-  };
-
-  private exportLibrary = () => {
-    const data = {
-      type: EXPORT_DATA_TYPES.excalidrawLibrary,
-      version: VERSIONS.excalidrawLibrary,
-      source: "webdraw",
-      libraryItems: this.libraryItems,
-    };
-    this.download(
-      new Blob([JSON.stringify(data, null, 2)], {
-        type: MIME_TYPES.excalidrawlib,
-      }),
-      "library.excalidrawlib",
-    );
-  };
 
   private groupSelectionFor(element: WebdrawElement) {
     const groupId = element.groupIds.at(-1);
@@ -3872,7 +3825,7 @@ export class WebDraw extends LitElement {
   private saveScene = () => {
     const data = JSON.stringify(
       {
-        type: "excalidraw",
+        type: "webdraw",
         version: 2,
         source: "webdraw",
         elements: this.elements,
@@ -3884,7 +3837,7 @@ export class WebDraw extends LitElement {
     );
     this.download(
       new Blob([data], { type: "application/json" }),
-      "drawing.excalidraw",
+      "drawing.webdraw",
     );
     this.menuOpen = false;
   };
@@ -3896,7 +3849,7 @@ export class WebDraw extends LitElement {
     try {
       const data = JSON.parse(await file.text()) as WebdrawInitialData;
       if (!Array.isArray(data.elements))
-        throw new Error("Invalid Excalidraw file");
+        throw new Error("Invalid Webdraw file");
       this.updateScene(data);
       this.menuOpen = false;
     } catch (error) {
@@ -3924,7 +3877,7 @@ export class WebDraw extends LitElement {
         -1,
         0,
         pngText.encode(
-          "application/vnd.excalidraw+json",
+          "application/vnd.webdraw+json",
           encodeSceneMetadata(this.serializedScene()),
         ),
       );
@@ -3932,7 +3885,7 @@ export class WebDraw extends LitElement {
     }
     this.download(
       output,
-      this.exportEmbedScene ? "drawing.excalidraw.png" : "drawing.png",
+      this.exportEmbedScene ? "drawing.webdraw.png" : "drawing.png",
     );
     this.dialog = null;
   };
@@ -3941,7 +3894,7 @@ export class WebDraw extends LitElement {
     const canvas = this.createExportCanvas();
     // ponytail: raster-backed SVG keeps one renderer; replace with rough.svg when editable vector export is required.
     const metadata = this.exportEmbedScene
-      ? `<metadata><!-- payload-type:application/vnd.excalidraw+json --><!-- payload-version:2 --><!-- payload-start -->${this.ownerDocument.defaultView!.btoa(encodeSceneMetadata(this.serializedScene()))}<!-- payload-end --></metadata>`
+      ? `<metadata><!-- payload-type:application/vnd.webdraw+json --><!-- payload-version:2 --><!-- payload-start -->${this.ownerDocument.defaultView!.btoa(encodeSceneMetadata(this.serializedScene()))}<!-- payload-end --></metadata>`
       : "";
     const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">${metadata}<image width="100%" height="100%" href="${canvas.toDataURL("image/png")}"/></svg>`;
     this.download(
@@ -3971,7 +3924,7 @@ export class WebDraw extends LitElement {
 
   private serializedScene() {
     return JSON.stringify({
-      type: "excalidraw",
+      type: "webdraw",
       version: 2,
       source: "webdraw",
       elements: this.exportElements(),
@@ -4307,6 +4260,16 @@ if (import.meta.env.DEV) {
     width: 100,
     height: 80,
   });
+  const library = (check as any).parseLibrary(
+    JSON.stringify([{ name: "Box", elements: [rectangle] }]),
+  ) as LibraryItem[];
+  console.assert(library.length === 1 && library[0].name === "Box");
+  try {
+    (check as any).parseLibrary('{"libraryItems":[]}');
+    console.assert(false, "Invalid Webdraw library was accepted");
+  } catch {
+    /* Webdraw libraries must be item arrays. */
+  }
   const stickyNote = newStickyNoteElement({
     type: "stickynote",
     x: 120,

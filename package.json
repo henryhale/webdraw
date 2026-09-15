@@ -1,7 +1,7 @@
 {
   "name": "webdraw",
   "version": "1.0.0",
-  "description": "Excalidraw-compatible drawing editor as a framework-agnostic Lit web component",
+  "description": "Webdraw drawing editor as a framework-agnostic Lit web component",
   "main": "./dist/webdraw.js",
   "module": "./dist/webdraw.js",
   "types": "./dist/webdraw.d.ts",
@@ -23,7 +23,7 @@
     "format:check": "prettier . --check"
   },
   "keywords": [
-    "excalidraw",
+    "webdraw",
     "lit",
     "web-component",
     "whiteboard"
