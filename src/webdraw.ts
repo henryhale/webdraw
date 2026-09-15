@@ -17,8 +17,11 @@ import {
   newLinearElement,
   newStickyNoteElement,
   normalizeStickyNote,
+  canChangeRoundness,
+  isUsingAdaptiveRadius,
+  newElementWith,
 } from "@excalidraw/element";
-import { icon, sloppinessIcon } from "./icons";
+import { edgeIcon, icon, sloppinessIcon } from "./icons";
 import { SHORTCUT_GROUPS, shortcutFor } from "./shortcuts";
 import {
   elementBounds,
@@ -103,6 +106,10 @@ const CANVAS_COLORS = {
   dark: ["#121212", "#161819", "#15191c", "#1a1a05", "#1c1715"],
 } as const;
 
+const edgeRoundness = (type: string, round: boolean) => round
+  ? { type: isUsingAdaptiveRadius(type) ? ROUNDNESS.ADAPTIVE_RADIUS : ROUNDNESS.PROPORTIONAL_RADIUS }
+  : null;
+
 export class WebDraw extends LitElement {
   static properties = {
     theme: { type: String, reflect: true },
@@ -171,6 +178,7 @@ export class WebDraw extends LitElement {
   private canvasColor = "#ffffff";
   private strokeWidth = 2;
   private roughness = 1;
+  private edgeRound = true;
   private fillStyle: "hachure" | "cross-hatch" | "solid" | "zigzag" = "hachure";
   private strokeStyle: "solid" | "dashed" | "dotted" = "solid";
   private opacity = 100;
@@ -270,6 +278,7 @@ export class WebDraw extends LitElement {
       scrollX: this.pan.x / this.zoom,
       scrollY: this.pan.y / this.zoom,
       activeTool: { type: this.tool },
+      currentItemRoundness: this.edgeRound ? "round" : "sharp",
       selectedElementIds: Object.fromEntries([...this.selectedIds].map((id) => [id, true])),
     };
   }
@@ -280,6 +289,7 @@ export class WebDraw extends LitElement {
     if (scene.files) { this.files = structuredClone(scene.files); this.loadSceneImages(); }
     if (scene.appState?.theme) this.theme = scene.appState.theme;
     if (scene.appState?.viewBackgroundColor) this.canvasColor = scene.appState.viewBackgroundColor;
+    if (scene.appState?.currentItemRoundness) this.edgeRound = scene.appState.currentItemRoundness === "round";
     const zoom = typeof scene.appState?.zoom === "number" ? scene.appState.zoom : scene.appState?.zoom?.value;
     if (zoom) this.zoom = zoom;
     if (scene.appState?.scrollX !== undefined || scene.appState?.scrollY !== undefined) {
@@ -585,6 +595,10 @@ export class WebDraw extends LitElement {
     const textOnly = selected?.type === "text" || this.tool === "text";
     const text = textOnly || sticky || !!(selected && this.boundLabel(selected));
     const linear = selected?.type === "arrow" || this.tool === "arrow";
+    const edgeTargets = this.elements.filter((item) => this.selectedIds.has(item.id) && canChangeRoundness(item.type));
+    const edgeValue = edgeTargets.length
+      ? edgeTargets.every((item) => !!item.roundness) ? true : edgeTargets.every((item) => !item.roundness) ? false : null
+      : this.edgeRound;
     const locked = this.elements.some((item) => this.selectedIds.has(item.id) && item.locked);
     const palette = (colors: readonly string[], current: string, set: (color: string) => void, allowTransparent = false) => html`
       <span class="color-palette">
@@ -602,7 +616,7 @@ export class WebDraw extends LitElement {
           <label>Stroke width <span class="segmented">${[1, 2, 4].map((width) => html`<button class=${this.strokeWidth === width ? "selected" : ""} @click=${() => this.setStrokeWidth(width)} aria-label=${`Stroke width ${width}`}><span class=${`stroke-width-${width}`}></span></button>`)}</span></label>
           <label>Stroke style <span class="segmented wide">${(["solid", "dashed", "dotted"] as const).map((style) => html`<button title=${style} class=${this.strokeStyle === style ? "selected" : ""} @click=${() => this.setStrokeStyle(style)}>${style === "solid" ? "━" : style === "dashed" ? "┅" : "┈"}</button>`)}</span></label>`}
         ${textOnly ? nothing : html`<label>Sloppiness <span class="segmented">${[0, 1, 2].map((value) => html`<button title=${["Architect", "Artist", "Cartoonist"][value]} aria-label=${`Sloppiness ${value + 1}`} class=${this.roughness === value ? "selected" : ""} @click=${() => this.setRoughness(value)}>${sloppinessIcon(value)}</button>`)}</span></label>`}
-        ${sticky ? html`<label>Edges <span class="segmented">${[false, true].map((round) => html`<button class=${!!selected?.roundness === round ? "selected" : ""} title=${round ? "Round" : "Sharp"} @click=${() => this.setStickyRound(round)}>${round ? "╭" : "⌜"}</button>`)}</span></label>` : nothing}
+        ${canChangeRoundness(this.tool as never) || edgeTargets.length ? html`<label>Edges <span class="segmented">${[false, true].map((round) => html`<button class=${edgeValue === round ? "selected" : ""} title=${round ? "Round" : "Sharp"} aria-label=${`${round ? "Round" : "Sharp"} edges`} @click=${() => this.setEdges(round)}>${edgeIcon(round)}</button>`)}</span></label>` : nothing}
         ${linear ? html`
           <label>Arrow type <span class="segmented">${(["sharp", "round", "elbow"] as const).map((type) => html`<button class=${this.arrowType === type ? "selected" : ""} title=${type} @click=${() => this.setArrowType(type)}>${type === "sharp" ? "↗" : type === "round" ? "↷" : "↱"}</button>`)}</span></label>
           <label>Arrowheads <span class="arrowheads-row"><span class="segmented">${([null, "arrow", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.startArrowhead === head ? "selected" : ""} title=${`Start ${head ?? "none"}`} @click=${() => this.setArrowhead("start", head)}>${head === null ? "×–" : head === "bar" ? "|–" : "←"}</button>`)}</span><span class="segmented">${([null, "arrow", "triangle", "circle", "diamond", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.endArrowhead === head ? "selected" : ""} title=${`End ${head ?? "none"}`} @click=${() => this.setArrowhead("end", head)}>${head === null ? "–×" : head === "triangle" ? "▷" : head === "circle" ? "–○" : head === "diamond" ? "–◇" : head === "bar" ? "–|" : "→"}</button>`)}</span></span></label>` : nothing}
@@ -744,17 +758,17 @@ export class WebDraw extends LitElement {
     if (tool === "arrow") {
       element = newArrowElement({ ...base, type: "arrow", points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null, startArrowhead: this.startArrowhead, endArrowhead: this.endArrowhead, elbowed: this.arrowType === "elbow" }) as WebdrawElement;
     } else if (tool === "line") {
-      element = newLinearElement({ ...base, type: "line", points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null }) as WebdrawElement;
+      element = newLinearElement({ ...base, type: "line", points: [[0, 0], [0, 0]] as any, roundness: edgeRoundness("line", this.edgeRound) }) as WebdrawElement;
     } else if (tool === "freedraw" || tool === "laser") {
       element = newFreeDrawElement({ ...base, type: "freedraw", strokeColor: tool === "laser" ? "#e03131" : base.strokeColor, points: [[0, 0]] as any, simulatePressure: true, customData: tool === "laser" ? { webdrawLaser: true } : undefined }) as WebdrawElement;
     } else if (tool === "frame") {
       element = newFrameElement({ ...base, name: null as any }) as WebdrawElement;
     } else if (tool === "embeddable") {
-      element = newEmbeddableElement({ ...base, type: "embeddable" }) as WebdrawElement;
+      element = newEmbeddableElement({ ...base, type: "embeddable", roundness: edgeRoundness("embeddable", this.edgeRound) }) as WebdrawElement;
     } else if (tool === "stickynote") {
-      element = newStickyNoteElement({ ...base, type: "stickynote", backgroundColor: this.backgroundColor === "transparent" ? DEFAULT_STICKY_NOTE_BG : this.backgroundColor, fillStyle: "solid", roundness: { type: ROUNDNESS.ADAPTIVE_RADIUS } }) as WebdrawElement;
+      element = newStickyNoteElement({ ...base, type: "stickynote", backgroundColor: this.backgroundColor === "transparent" ? DEFAULT_STICKY_NOTE_BG : this.backgroundColor, fillStyle: "solid", roundness: edgeRoundness("stickynote", this.edgeRound) }) as WebdrawElement;
     } else {
-      element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse" }) as WebdrawElement;
+      element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse", roundness: tool === "ellipse" ? null : edgeRoundness(tool, this.edgeRound) }) as WebdrawElement;
     }
     this.elements = [...this.elements, element];
     const bindingDisabled = event.ctrlKey || event.metaKey;
@@ -1090,6 +1104,7 @@ export class WebDraw extends LitElement {
     this.fillStyle = element.fillStyle ?? this.fillStyle;
     this.strokeStyle = element.strokeStyle ?? this.strokeStyle;
     this.roughness = element.roughness ?? this.roughness;
+    if (canChangeRoundness(element.type)) this.edgeRound = !!element.roundness;
     this.opacity = element.opacity ?? this.opacity;
     const label = element.type === "text" ? element : this.boundLabel(element);
     if (label) {
@@ -1234,11 +1249,14 @@ export class WebDraw extends LitElement {
   private setStrokeWidth(value: number) { this.strokeWidth = value; this.updateSelected({ strokeWidth: value }); this.requestUpdate(); }
   private setStrokeStyle(value: typeof this.strokeStyle) { this.strokeStyle = value; this.updateSelected({ strokeStyle: value }); this.requestUpdate(); }
   private setRoughness(value: number) { this.roughness = value; this.updateSelected({ roughness: value }); this.requestUpdate(); }
-  private setStickyRound(round: boolean) {
-    const selected = this.elements.find((item) => this.selectedIds.has(item.id));
-    if (!selected) return;
+  private setEdges(round: boolean) {
+    this.edgeRound = round;
+    this.requestUpdate();
+    if (!this.elements.some((item) => this.selectedIds.has(item.id) && canChangeRoundness(item.type))) return;
     this.checkpoint();
-    this.elements = updateElementsWithExcalidraw(this.elements, new Set([selected.id]), { roundness: round ? { type: ROUNDNESS.ADAPTIVE_RADIUS } : null }) as WebdrawElement[];
+    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) && canChangeRoundness(item.type)
+      ? newElementWith(item, { roundness: edgeRoundness(item.type, round) }) as WebdrawElement
+      : item);
     this.emitChange();
   }
   private onOpacity = (event: Event) => {
@@ -1687,7 +1705,7 @@ export class WebDraw extends LitElement {
       const rect = this.canvas!.getBoundingClientRect(), width = Math.min(400, image.naturalWidth), height = width * image.naturalHeight / image.naturalWidth;
       const point = { x: (rect.width / 2 - this.pan.x) / this.zoom, y: (rect.height / 2 - this.pan.y) / this.zoom };
       const fileId = win.crypto.randomUUID() as WebdrawBinaryFileData["id"];
-      const element = newImageElement({ type: "image", x: point.x - width / 2, y: point.y - height / 2, width, height, status: "saved", fileId }) as WebdrawElement;
+      const element = newImageElement({ type: "image", x: point.x - width / 2, y: point.y - height / 2, width, height, status: "saved", fileId, roundness: edgeRoundness("image", this.edgeRound) }) as WebdrawElement;
       this.files = { ...this.files, [fileId]: { id: fileId, dataURL: source, mimeType: file.type || "application/octet-stream", created: Date.now() } };
       this.imageCache.set(fileId, { image, mimeType: file.type }); this.elements = [...this.elements, element]; this.selectedIds = new Set([element.id]); this.tool = "selection"; this.emitChange();
     };
@@ -1815,6 +1833,17 @@ if (import.meta.env.DEV) {
   setBackground("#ffc9c9");
   console.assert((check as any).backgroundColor === "#ffc9c9");
   console.assert((check as any).strokeColor === DEFAULT_ELEMENT_STROKE_PICKS[0]);
+  const rectangle = newElement({ type: "rectangle", x: 0, y: 0, width: 100, height: 80 });
+  const stickyNote = newStickyNoteElement({ type: "stickynote", x: 120, y: 0, width: 100, height: 80 });
+  const ellipse = newElement({ type: "ellipse", x: 240, y: 0, width: 100, height: 80 });
+  check.elements = [rectangle, stickyNote, ellipse];
+  check.selectedIds = new Set([rectangle.id, stickyNote.id, ellipse.id]);
+  (check as any).setEdges(true);
+  console.assert(check.elements[0].roundness?.type === ROUNDNESS.ADAPTIVE_RADIUS);
+  console.assert(check.elements[1].roundness?.type === ROUNDNESS.PROPORTIONAL_RADIUS);
+  console.assert(check.elements[2].roundness === null);
+  (check as any).setEdges(false);
+  console.assert(check.elements[0].roundness === null && check.elements[1].roundness === null);
 }
 
 declare global {

@@ -27,6 +27,7 @@ export interface WebdrawInitialData {
     zoom?: number | { value: number };
     scrollX?: number;
     scrollY?: number;
+    currentItemRoundness?: "sharp" | "round";
   };
   files?: WebdrawBinaryFiles;
 }

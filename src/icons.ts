@@ -59,3 +59,13 @@ export const sloppinessIcon = (value: number) => svgIcon(value === 0
   : value === 1
     ? svg`<path d="m4 15 5-2 3-4 2 5 6-3"/>`
     : svg`<path d="m4 15 5-2 3-4 1 6 3-5 4 2"/><path d="m5 17 5-2 4-4 2 3 4-2"/>`);
+
+export const edgeIcon = (round: boolean) => round
+  ? svg`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 12V8a4 4 0 0 1 4-4h4"/>
+      <path d="M16 4h.01M20 4h.01M20 8h.01M20 12h.01M4 16h.01M20 16h.01M4 20h.01M8 20h.01M12 20h.01M16 20h.01M20 20h.01"/>
+    </svg>`
+  : svg`<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.333 10V3.333H10"/>
+      <path d="M13.333 3.333h.01M16.667 3.333h.01M16.667 6.667h.01M16.667 10h.01M3.333 13.333h.01M16.667 13.333h.01M3.333 16.667h.01M6.667 16.667h.01M10 16.667h.01M13.333 16.667h.01M16.667 16.667h.01"/>
+    </svg>`;
