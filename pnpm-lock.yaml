@@ -208,20 +208,17 @@ importers:
   .:
     dependencies:
       '@excalidraw/common':
-        specifier: 0.18.0-4e471c107
-        version: 0.18.0-4e471c107
+        specifier: 0.18.0-4e758db
+        version: 0.18.0-4e758db
       '@excalidraw/element':
-        specifier: 0.18.0-4e471c107
-        version: 0.18.0-4e471c107
+        specifier: 0.18.0-4e758db
+        version: 0.18.0-4e758db
       '@excalidraw/math':
-        specifier: 0.18.0-4e471c107
-        version: 0.18.0-4e471c107
+        specifier: 0.18.0-4e758db
+        version: 0.18.0-4e758db
       lit:
         specifier: ^3.3.3
         version: 3.3.3
-      perfect-freehand:
-        specifier: 1.2.0
-        version: 1.2.0
       png-chunk-text:
         specifier: 1.0.0
         version: 1.0.0
@@ -385,14 +382,18 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@excalidraw/common@0.18.0-4e471c107':
-    resolution: {integrity: sha512-qaygf3yL36CHqYEBeoZO+XkE7AcllXIakNju+WVoO1A3IHPErnvwiMm33UgV16pZOSFApq2hhSPieKgeru9dsQ==}
+  '@excalidraw/common@0.18.0-4e758db':
+    resolution: {integrity: sha512-L2UFbcmEL/O5LbnhBhiu0/ZfAXCFEHWQABbVaM36ZfLMOkOxMnNIISdhAFSvHr9sKHueooz0rfginE9TZvcVew==}
 
-  '@excalidraw/element@0.18.0-4e471c107':
-    resolution: {integrity: sha512-LSEI8JdFWJUbV54tctfr6gEPO3NlMM2YtPywVQG/3p98clXJJPiaDrYkO9/Pl/A4V1rh81Ow1SwNECuZvEe7MQ==}
+  '@excalidraw/element@0.18.0-4e758db':
+    resolution: {integrity: sha512-KuWcHyxBbMW+PmaCzdOm32tZEQZfO7MGpRlsDbqEMPvKZcEgX5c3rueygyDq5GNr6076CKtcJA1aSaLqiLLtpg==}
 
-  '@excalidraw/math@0.18.0-4e471c107':
-    resolution: {integrity: sha512-txC6MSc+bMt+S6NePf32mICY+3IZxLT6rl5ZaDWAmmln0MYF35u8+FZIVMAzjuP8z3OZE65XPVERUpdd4PmeFg==}
+  '@excalidraw/fractional-indexing@0.18.0-4e758db':
+    resolution: {integrity: sha512-T5lzNBeaEGao2qctcgiiKaQJBTOaiEkB9jdShdScd9HOnXlG6N9N2cdSeeZnRY2Uw70/4+PBV0USZ0ycB2y1Tg==}
+    engines: {node: ^14.13.1 || >=16.0.0}
+
+  '@excalidraw/math@0.18.0-4e758db':
+    resolution: {integrity: sha512-/LF1PKz03boGrnO0a0/wjmSXI9yFY9YquD7kRU7q+fvrifPs6qaYJYWrcA2P3nVEWmaJSmiJwwZFe8YGTS7UFw==}
 
   '@lit-labs/ssr-dom-shim@1.6.0':
     resolution: {integrity: sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ==}
@@ -632,9 +633,6 @@ packages:
   path-data-parser@0.1.0:
     resolution: {integrity: sha512-NOnmBpt5Y2RWbuv0LMzsayp3lVylAHLPUTut412ZA3l+C4uw4ZVkQbjShYCQ8TCpUMdPapr4YjUqLYD6v68j+w==}
 
-  perfect-freehand@1.2.0:
-    resolution: {integrity: sha512-h/0ikF1M3phW7CwpZ5MMvKnfpHficWoOEyr//KVNTxV4F6deRK1eYMtHyBKEAKFK0aXIEUK9oBvlF6PNXMDsAw==}
-
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -685,6 +683,9 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
+
+  tinycolor2@1.6.0:
+    resolution: {integrity: sha512-XPaBkWQJdsf3pLKJV9p4qN/S+fm2Oj8AIPo1BTUhg5oxkvm9+SVEGFdhyOz7tTdUTfvxMiAs4sp6/eZO2Ew+pw==}
 
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
@@ -794,16 +795,21 @@ snapshots:
   '@esbuild/win32-x64@0.19.12':
     optional: true
 
-  '@excalidraw/common@0.18.0-4e471c107': {}
-
-  '@excalidraw/element@0.18.0-4e471c107':
+  '@excalidraw/common@0.18.0-4e758db':
     dependencies:
-      '@excalidraw/common': 0.18.0-4e471c107
-      '@excalidraw/math': 0.18.0-4e471c107
+      tinycolor2: 1.6.0
 
-  '@excalidraw/math@0.18.0-4e471c107':
+  '@excalidraw/element@0.18.0-4e758db':
     dependencies:
-      '@excalidraw/common': 0.18.0-4e471c107
+      '@excalidraw/common': 0.18.0-4e758db
+      '@excalidraw/fractional-indexing': 0.18.0-4e758db
+      '@excalidraw/math': 0.18.0-4e758db
+
+  '@excalidraw/fractional-indexing@0.18.0-4e758db': {}
+
+  '@excalidraw/math@0.18.0-4e758db':
+    dependencies:
+      '@excalidraw/common': 0.18.0-4e758db
 
   '@lit-labs/ssr-dom-shim@1.6.0': {}
 
@@ -993,8 +999,6 @@ snapshots:
 
   path-data-parser@0.1.0: {}
 
-  perfect-freehand@1.2.0: {}
-
   picocolors@1.1.1: {}
 
   picomatch@2.3.2: {}
@@ -1075,6 +1079,8 @@ snapshots:
   sliced@1.0.1: {}
 
   source-map-js@1.2.1: {}
+
+  tinycolor2@1.6.0: {}
 
   to-regex-range@5.0.1:
     dependencies:

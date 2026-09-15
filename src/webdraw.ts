@@ -1,42 +1,88 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import rough from "roughjs/bin/rough";
-import { getStroke } from "perfect-freehand";
 import pngText from "png-chunk-text";
 import encodePng from "png-chunks-encode";
 import extractPng from "png-chunks-extract";
-import { FONT_FAMILY, ROUNDNESS } from "@excalidraw/common";
+import { FONT_FAMILY, FRAME_STYLE, ROUNDNESS, COLOR_PALETTE, DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX, LIBRARY_DISABLED_TYPES, EXPORT_DATA_TYPES, VERSIONS, MIME_TYPES } from "@excalidraw/common";
 import {
+  FlowChartNavigator,
+  deepCopyElement,
+  getFrameLikeTitle,
   newElement,
+  newArrowElement,
   newEmbeddableElement,
   newFreeDrawElement,
   newFrameElement,
   newImageElement,
   newLinearElement,
-  newTextElement,
+  newStickyNoteElement,
+  normalizeStickyNote,
 } from "@excalidraw/element";
 import { icon, sloppinessIcon } from "./icons";
 import { SHORTCUT_GROUPS } from "./shortcuts";
-import type { Arrowhead, TextAlign, Tool, VerticalAlign, WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
-import { cursorForHandle, encodeSceneMetadata, normalizeBounds, rotatePoint, type Point, type ResizeHandle } from "./utils";
+import {
+  elementBounds,
+  elementAbsoluteBox,
+  elementTransformHandles,
+  cropImageWithExcalidraw,
+  commitTextWithExcalidraw,
+  commonBounds,
+  addChildrenToNewFrameWithExcalidraw,
+  bindArrowEndpointWithExcalidraw,
+  alignElementsWithExcalidraw,
+  appendLinearPointWithExcalidraw,
+  createFlowchartNodeWithExcalidraw,
+  dragElementsWithExcalidraw,
+  dragNewShapeWithExcalidraw,
+  duplicateElementsWithExcalidraw,
+  duplicateExternalElementsWithExcalidraw,
+  extendFreeDrawWithExcalidraw,
+  finishLinearWithExcalidraw,
+  flipElementsWithExcalidraw,
+  fillRegionWithExcalidraw,
+  hitElements,
+  linearPointIndexAt,
+  linearPoints,
+  moveLinearPointWithExcalidraw,
+  moveElementsInLayerWithExcalidraw,
+  renderExcalidrawElements,
+  removeElementsWithExcalidraw,
+  reconcileFrameMembershipWithExcalidraw,
+  replaceElementWithExcalidraw,
+  selectElementsWithinExcalidraw,
+  selectionTransformHandleAt,
+  selectionTransformHandles,
+  selectedElementsWithBindings,
+  groupElementsWithExcalidraw,
+  ungroupElementsWithExcalidraw,
+  transformElementsWithExcalidraw,
+  textElementAngle,
+  updateTextStylesWithExcalidraw,
+  updateElementsWithExcalidraw,
+  type ExcalidrawImageCache,
+} from "./excalidraw-engine";
+import type { Arrowhead, TextAlign, Tool, VerticalAlign, WebdrawBinaryFileData, WebdrawBinaryFiles, WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
+import { cursorForHandle, encodeSceneMetadata, normalizeBounds, type Point, type ResizeHandle } from "./utils";
 import "./styles.scss";
 
-export type { WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
+export type { WebdrawBinaryFileData, WebdrawBinaryFiles, WebdrawElement, WebdrawInitialData, WebdrawTheme } from "./types";
 
 type MutableElement = WebdrawElement & Record<string, any>;
-type TextEdit = Point & { elementId?: string; containerId?: string; fontSize: number; fontFamily: number; textAlign: TextAlign; verticalAlign: VerticalAlign; width?: number };
+type LibraryItem = { id: string; status: "published" | "unpublished"; elements: readonly WebdrawElement[]; created: number; name?: string };
+type TextEdit = Point & { elementId?: string; containerId?: string; fontSize: number; fontFamily: number; textAlign: TextAlign; verticalAlign: VerticalAlign; width?: number; angle?: number };
 type Drag = {
-  mode: "draw" | "move" | "pan" | "select" | "erase" | "resize" | "rotate" | "point" | "crop";
+  mode: "draw" | "move" | "pan" | "select" | "erase" | "resize" | "rotate" | "point" | "crop" | "bucket";
   start: Point;
   last: Point;
   draftId?: string;
-  origins?: Map<string, Point>;
+  originalElements?: Map<string, WebdrawElement>;
   pan?: Point;
   checkpointed?: boolean;
   handle?: ResizeHandle;
   element?: MutableElement;
-  startAngle?: number;
   pointIndex?: number;
   multiPoint?: boolean;
+  bindingDisabled?: boolean;
 };
 
 const TOOL_META: readonly [Tool, string, string][] = [
@@ -75,6 +121,8 @@ export class WebDraw extends LitElement {
     menuOpen: { state: true },
     moreToolsOpen: { state: true },
     libraryOpen: { state: true },
+    libraryItems: { state: true },
+    libraryQuery: { state: true },
     dialog: { state: true },
     searchQuery: { state: true },
     editingText: { state: true },
@@ -86,6 +134,7 @@ export class WebDraw extends LitElement {
     editingLinearId: { state: true },
     snapToObjects: { state: true },
     croppingImageId: { state: true },
+    editingFrameId: { state: true },
   };
 
   theme: WebdrawTheme = "auto";
@@ -99,6 +148,8 @@ export class WebDraw extends LitElement {
   menuOpen = false;
   moreToolsOpen = false;
   libraryOpen = false;
+  libraryItems: LibraryItem[] = [];
+  libraryQuery = "";
   dialog: "export" | "help" | "search" | "commands" | null = null;
   searchQuery = "";
   editingText: TextEdit | null = null;
@@ -110,6 +161,7 @@ export class WebDraw extends LitElement {
   editingLinearId: string | null = null;
   snapToObjects = false;
   croppingImageId: string | null = null;
+  editingFrameId: string | null = null;
 
   private canvas?: HTMLCanvasElement;
   private observer?: ResizeObserver;
@@ -127,6 +179,7 @@ export class WebDraw extends LitElement {
   private fillStyle: "hachure" | "cross-hatch" | "solid" | "zigzag" = "hachure";
   private strokeStyle: "solid" | "dashed" | "dotted" = "solid";
   private opacity = 100;
+  private opacityCheckpointed = false;
   private fontFamily = FONT_FAMILY.Excalifont;
   private fontSize = 20;
   private textAlign: TextAlign = "left";
@@ -136,6 +189,7 @@ export class WebDraw extends LitElement {
   private endArrowhead: Arrowhead = "arrow";
   private spacePressed = false;
   private pendingLinearId: string | null = null;
+  private pendingLinearBindingDisabled = false;
   private styleClipboard: Record<string, unknown> | null = null;
   private textDraft = "";
   private exportScale = 1;
@@ -144,8 +198,10 @@ export class WebDraw extends LitElement {
   private exportEmbedScene = false;
   private exportSelectionOnly = false;
   private exportPadding = 10;
-  private imageCache = new Map<string, HTMLImageElement>();
+  private imageCache: ExcalidrawImageCache = new Map();
+  private files: WebdrawBinaryFiles = {};
   private clipboard: WebdrawElement[] = [];
+  private flowchartNavigator = new FlowChartNavigator();
 
   protected createRenderRoot() { return this; }
 
@@ -159,6 +215,13 @@ export class WebDraw extends LitElement {
     this.systemTheme = this.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)");
     this.systemTheme?.addEventListener("change", this.onSystemThemeChange);
     if (this.theme === "auto") this.strokeColor = this.systemTheme?.matches ? "#e3e3e8" : "#1b1b1f";
+    try {
+      const saved = this.ownerDocument.defaultView?.localStorage.getItem("webdraw-library");
+      if (saved) {
+        const items = JSON.parse(saved);
+        if (Array.isArray(items)) this.libraryItems = items.filter((item) => Array.isArray(item?.elements));
+      }
+    } catch { /* Storage may be unavailable in embedded/private contexts. */ }
   }
 
   disconnectedCallback() {
@@ -180,11 +243,14 @@ export class WebDraw extends LitElement {
   protected willUpdate(changes: PropertyValues<this>) {
     if (changes.has("initialData") && this.initialData) {
       this.elements = structuredClone([...(this.initialData.elements ?? [])]);
+      this.files = structuredClone(this.initialData.files ?? {});
+      this.loadSceneImages();
       const state = this.initialData.appState;
       if (state?.theme) this.theme = state.theme;
       if (state?.viewBackgroundColor) this.canvasColor = state.viewBackgroundColor;
-      if (state?.zoom) this.zoom = state.zoom;
-      this.pan = { x: state?.scrollX ?? 0, y: state?.scrollY ?? 0 };
+      const zoom = typeof state?.zoom === "number" ? state.zoom : state?.zoom?.value;
+      if (zoom) this.zoom = zoom;
+      this.pan = { x: (state?.scrollX ?? 0) * this.zoom, y: (state?.scrollY ?? 0) * this.zoom };
     }
   }
 
@@ -207,8 +273,8 @@ export class WebDraw extends LitElement {
       theme: this.theme,
       viewBackgroundColor: this.canvasColor,
       zoom: { value: this.zoom },
-      scrollX: this.pan.x,
-      scrollY: this.pan.y,
+      scrollX: this.pan.x / this.zoom,
+      scrollY: this.pan.y / this.zoom,
       activeTool: { type: this.tool },
       selectedElementIds: Object.fromEntries([...this.selectedIds].map((id) => [id, true])),
     };
@@ -217,15 +283,27 @@ export class WebDraw extends LitElement {
   updateScene(scene: WebdrawInitialData) {
     this.checkpoint();
     if (scene.elements) this.elements = structuredClone([...scene.elements]);
+    if (scene.files) { this.files = structuredClone(scene.files); this.loadSceneImages(); }
     if (scene.appState?.theme) this.theme = scene.appState.theme;
     if (scene.appState?.viewBackgroundColor) this.canvasColor = scene.appState.viewBackgroundColor;
-    if (scene.appState?.zoom) this.zoom = scene.appState.zoom;
+    const zoom = typeof scene.appState?.zoom === "number" ? scene.appState.zoom : scene.appState?.zoom?.value;
+    if (zoom) this.zoom = zoom;
+    if (scene.appState?.scrollX !== undefined || scene.appState?.scrollY !== undefined) {
+      this.pan = { x: (scene.appState.scrollX ?? 0) * this.zoom, y: (scene.appState.scrollY ?? 0) * this.zoom };
+    }
     this.emitChange();
+  }
+
+  addFiles(files: readonly WebdrawBinaryFileData[]) {
+    this.files = { ...this.files, ...Object.fromEntries(files.map((file) => [file.id, file])) };
+    this.loadSceneImages();
   }
 
   resetScene() {
     this.checkpoint();
     this.elements = [];
+    this.files = {};
+    this.imageCache.clear();
     this.selectedIds = new Set();
     this.emitChange();
   }
@@ -254,8 +332,17 @@ export class WebDraw extends LitElement {
         <div class="webdraw-embeds">${this.elements.filter((item) => item.type === "embeddable").map((item) => {
           const element = item as MutableElement, url = this.getEmbedUrl(element);
           return url ? html`<iframe title="Web embed" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" src=${url}
+            class=${this.viewModeEnabled || this.selectedIds.has(element.id) ? "active" : ""}
             style=${`left:${element.x * this.zoom + this.pan.x}px;top:${element.y * this.zoom + this.pan.y}px;width:${element.width * this.zoom}px;height:${element.height * this.zoom}px;transform:rotate(${element.angle ?? 0}rad)`}></iframe>` : nothing;
         })}</div>
+        <div class="webdraw-frame-names">${this.elements.filter((item) => item.type === "frame").map((frame) => html`
+          <div class="webdraw-frame-name" style=${`left:${frame.x * this.zoom + this.pan.x}px;top:${frame.y * this.zoom + this.pan.y - (FRAME_STYLE.nameFontSize * FRAME_STYLE.nameLineHeight + FRAME_STYLE.nameOffsetY) * this.zoom}px;max-width:${frame.width * this.zoom}px;font-size:${FRAME_STYLE.nameFontSize * this.zoom}px;color:${this.isDarkTheme() ? FRAME_STYLE.nameColorDarkTheme : FRAME_STYLE.nameColorLightTheme}`}
+            @pointerdown=${(event: PointerEvent) => this.onPointerDown(event)} @dblclick=${(event: MouseEvent) => { event.stopPropagation(); this.checkpoint(); this.editingFrameId = frame.id; }}>
+            ${this.editingFrameId === frame.id ? html`<input autofocus .value=${getFrameLikeTitle(frame)} size=${Math.max(1, getFrameLikeTitle(frame).length + 1)}
+              @input=${(event: InputEvent) => { this.elements = updateElementsWithExcalidraw(this.elements, new Set([frame.id]), { name: (event.target as HTMLInputElement).value }) as WebdrawElement[]; }}
+              @blur=${() => { this.editingFrameId = null; this.emitChange(); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === "Escape") (event.target as HTMLInputElement).blur(); }} />` : getFrameLikeTitle(frame)}
+          </div>`)}
+        </div>
 
         <div class="layer-ui__wrapper">
           ${this.zenModeEnabled ? nothing : html`
@@ -299,8 +386,11 @@ export class WebDraw extends LitElement {
                   ${this.libraryOpen ? html`
                     <aside class="Island library-panel">
                       <header><strong>Library</strong><button aria-label="Close library" @click=${() => this.libraryOpen = false}>×</button></header>
-                      <input class="library-search" type="search" placeholder="Search library" />
-                      <div class="library-empty">Select an item on canvas to add it here, or install a library from the public repository, below.</div>
+                      <input class="library-search" type="search" placeholder="Search library" .value=${this.libraryQuery} @input=${(event: Event) => this.libraryQuery = (event.target as HTMLInputElement).value} />
+                      ${this.selectedIds.size ? html`<button class="library-action" @click=${this.addSelectedToLibrary}>Add selection to library</button>` : nothing}
+                      ${this.libraryItems.length ? html`<div class="library-items">${this.libraryItems.filter((item) => !this.libraryQuery || (item.name ?? item.elements.map((element) => element.type).join(" ")).toLowerCase().includes(this.libraryQuery.toLowerCase())).map((item) => html`<div class="library-item"><button @click=${() => this.insertLibraryItem(item)} title="Insert library item">${item.name ?? item.elements.map((element) => element.type).join(" + ")}</button><button aria-label="Remove library item" @click=${() => this.removeLibraryItem(item.id)}>×</button></div>`)}</div>` : html`<div class="library-empty">Select an item on canvas to add it here, or install a library from the public repository, below.</div>`}
+                      <div class="library-controls"><button @click=${() => this.querySelector<HTMLInputElement>(".library-file-input")?.click()}>Import</button><button @click=${this.exportLibrary} ?disabled=${!this.libraryItems.length}>Export</button></div>
+                      <input class="library-file-input" type="file" accept=".excalidrawlib,application/vnd.excalidrawlib+json" hidden @change=${this.importLibrary} />
                       <a class="library-browse" href="https://libraries.excalidraw.com" target="_blank" rel="noopener">Browse libraries</a>
                     </aside>` : nothing}
                 </div>
@@ -330,7 +420,7 @@ export class WebDraw extends LitElement {
         ${this.contextMenu ? this.renderContextMenu() : nothing}
         ${this.editingText ? html`
           <textarea class="webdraw-text-editor" aria-label="Text" placeholder="Type something" rows="1" .value=${this.textDraft}
-            style=${`left:${this.editingText.x * this.zoom + this.pan.x}px;top:${this.editingText.y * this.zoom + this.pan.y}px;font-size:${this.editingText.fontSize * this.zoom}px;font-family:${this.fontName(this.editingText.fontFamily)};text-align:${this.editingText.textAlign};${this.editingText.width ? `width:${Math.max(64, this.editingText.width * this.zoom)}px` : ""}`}
+            style=${`left:${this.editingText.x * this.zoom + this.pan.x}px;top:${this.editingText.y * this.zoom + this.pan.y}px;font-size:${this.editingText.fontSize * this.zoom}px;font-family:${this.fontName(this.editingText.fontFamily)};text-align:${this.editingText.textAlign};transform:rotate(${this.editingText.angle ?? 0}rad);transform-origin:top left;${this.editingText.width ? `width:${Math.max(64, this.editingText.width * this.zoom)}px` : ""}`}
             @input=${this.onTextInput}
             @pointerdown=${(event: PointerEvent) => event.stopPropagation()}
             @keydown=${this.onTextKeyDown} @blur=${this.commitText}></textarea>` : nothing}
@@ -494,7 +584,7 @@ export class WebDraw extends LitElement {
   private renderProperties() {
     if (this.viewModeEnabled || (this.tool === "selection" && !this.selectedIds.size) || this.tool === "hand" || this.tool === "eraser") return nothing;
     const selected = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
-    const sticky = !!selected?.customData?.webdrawSticky || this.tool === "stickynote";
+    const sticky = selected?.type === "stickynote" || this.tool === "stickynote";
     const textOnly = selected?.type === "text" || this.tool === "text";
     const text = textOnly || sticky || !!(selected && this.boundLabel(selected));
     const linear = selected?.type === "arrow" || this.tool === "arrow";
@@ -515,7 +605,7 @@ export class WebDraw extends LitElement {
           <label>Stroke width <span class="segmented">${[1, 2, 4].map((width) => html`<button class=${this.strokeWidth === width ? "selected" : ""} @click=${() => this.setStrokeWidth(width)} aria-label=${`Stroke width ${width}`}><span class=${`stroke-width-${width}`}></span></button>`)}</span></label>
           <label>Stroke style <span class="segmented wide">${(["solid", "dashed", "dotted"] as const).map((style) => html`<button title=${style} class=${this.strokeStyle === style ? "selected" : ""} @click=${() => this.setStrokeStyle(style)}>${style === "solid" ? "━" : style === "dashed" ? "┅" : "┈"}</button>`)}</span></label>`}
         ${textOnly ? nothing : html`<label>Sloppiness <span class="segmented">${[0, 1, 2].map((value) => html`<button title=${["Architect", "Artist", "Cartoonist"][value]} aria-label=${`Sloppiness ${value + 1}`} class=${this.roughness === value ? "selected" : ""} @click=${() => this.setRoughness(value)}>${sloppinessIcon(value)}</button>`)}</span></label>`}
-        ${sticky ? html`<label>Edges <span class="segmented">${[false, true].map((round) => html`<button class=${(selected?.customData?.webdrawRound !== false) === round ? "selected" : ""} title=${round ? "Round" : "Sharp"} @click=${() => this.setStickyRound(round)}>${round ? "╭" : "⌜"}</button>`)}</span></label>` : nothing}
+        ${sticky ? html`<label>Edges <span class="segmented">${[false, true].map((round) => html`<button class=${!!selected?.roundness === round ? "selected" : ""} title=${round ? "Round" : "Sharp"} @click=${() => this.setStickyRound(round)}>${round ? "╭" : "⌜"}</button>`)}</span></label>` : nothing}
         ${linear ? html`
           <label>Arrow type <span class="segmented">${(["sharp", "round", "elbow"] as const).map((type) => html`<button class=${this.arrowType === type ? "selected" : ""} title=${type} @click=${() => this.setArrowType(type)}>${type === "sharp" ? "↗" : type === "round" ? "↷" : "↱"}</button>`)}</span></label>
           <label>Arrowheads <span class="arrowheads-row"><span class="segmented">${([null, "arrow", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.startArrowhead === head ? "selected" : ""} title=${`Start ${head ?? "none"}`} @click=${() => this.setArrowhead("start", head)}>${head === null ? "×–" : head === "bar" ? "|–" : "←"}</button>`)}</span><span class="segmented">${([null, "arrow", "triangle", "circle", "diamond", "bar"] as Arrowhead[]).map((head) => html`<button class=${this.endArrowhead === head ? "selected" : ""} title=${`End ${head ?? "none"}`} @click=${() => this.setArrowhead("end", head)}>${head === null ? "–×" : head === "triangle" ? "▷" : head === "circle" ? "–○" : head === "diamond" ? "–◇" : head === "bar" ? "–|" : "→"}</button>`)}</span></span></label>` : nothing}
@@ -524,7 +614,7 @@ export class WebDraw extends LitElement {
           <label>Font size <span class="segmented font-size">${([[16, "S"], [20, "M"], [28, "L"], [36, "XL"]] as const).map(([size, label]) => html`<button class=${this.fontSize === size ? "selected" : ""} @click=${() => this.setFontSize(size)}>${label}</button>`)}</span></label>
           <label>Text align <span class="segmented">${(["left", "center", "right"] as const).map((align) => html`<button class="text-${align} ${this.textAlign === align ? "selected" : ""}" title=${align} @click=${() => this.setTextAlign(align)}>≡</button>`)}</span></label>
           ${sticky ? html`<label>Vertical align <span class="segmented">${(["top", "middle", "bottom"] as const).map((align) => html`<button class=${this.verticalAlign === align ? "selected" : ""} title=${align} @click=${() => this.setVerticalAlign(align)}>${align === "top" ? "⊤" : align === "middle" ? "⊢" : "⊥"}</button>`)}</span></label>` : nothing}` : nothing}
-        <label>Opacity <span class="range-row"><input type="range" min="0" max="100" .value=${String(this.opacity)} @input=${this.onOpacity}><output>${this.opacity}</output></span></label>
+        <label>Opacity <span class="range-row"><input type="range" min="0" max="100" .value=${String(this.opacity)} @pointerdown=${() => this.opacityCheckpointed = false} @change=${() => this.opacityCheckpointed = false} @input=${this.onOpacity}><output>${this.opacity}</output></span></label>
         ${this.selectedIds.size ? html`
           <label>Layers <span class="action-row icon-actions"><button title="Send to back" @click=${this.sendToBack}>${icon("sendBack")}</button><button title="Send backward" @click=${this.sendBackward}>${icon("sendBackward")}</button><button title="Bring forward" @click=${this.bringForward}>${icon("bringForward")}</button><button title="Bring to front" @click=${this.bringToFront}>${icon("bringFront")}</button></span></label>
           <label>Actions <span class="action-row icon-actions"><button title="Duplicate" @click=${this.duplicateSelected}>${icon("duplicate")}</button><button class="danger" title="Delete" @click=${this.deleteSelected}>${icon("delete")}</button><button title="Add link" @click=${this.setSelectedLink}>${icon("link")}</button><button title=${locked ? "Unlock" : "Lock"} @click=${() => this.updateSelected({ locked: !locked })}>${icon("lock")}</button></span></label>` : nothing}
@@ -546,13 +636,12 @@ export class WebDraw extends LitElement {
     const id = this.pendingLinearId, element = this.elements.find((item) => item.id === id) as MutableElement | undefined;
     this.pendingLinearId = null;
     if (!element) return;
-    const points = element.points.slice(0, -1).filter((point: number[], index: number, all: number[][]) => !index || point[0] !== all[index - 1][0] || point[1] !== all[index - 1][1]);
-    if (points.length < 2) this.elements = this.elements.filter((item) => item.id !== id);
-    else {
-      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
-      this.replaceElement({ ...element, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: element.version + 1 } as WebdrawElement);
+    this.elements = finishLinearWithExcalidraw(this.elements, id) as WebdrawElement[];
+    if (this.elements.some((item) => item.id === id)) {
       this.selectedIds = new Set([id]);
+      if (element.type === "arrow" && !this.pendingLinearBindingDisabled) this.elements = bindArrowEndpointWithExcalidraw(this.elements, id, "end", this.zoom) as WebdrawElement[];
     }
+    this.pendingLinearBindingDisabled = false;
     if (!this.toolLocked) this.tool = "selection";
     this.emitChange(); this.requestUpdate();
   };
@@ -563,7 +652,7 @@ export class WebDraw extends LitElement {
   }
 
   private onPointerDown = (event: PointerEvent) => {
-    if (this.viewModeEnabled || (event.button !== 0 && event.button !== 1) || this.editingText) return;
+    if ((event.button !== 0 && event.button !== 1) || this.editingText) return;
     this.focus();
     this.menuOpen = false;
     this.moreToolsOpen = false;
@@ -571,7 +660,7 @@ export class WebDraw extends LitElement {
     this.contextMenu = null;
     this.canvas!.setPointerCapture(event.pointerId);
     const point = this.scenePoint(event);
-    if (this.tool === "hand" || event.button === 1 || this.spacePressed) {
+    if (this.viewModeEnabled || this.tool === "hand" || event.button === 1 || this.spacePressed) {
       this.drag = { mode: "pan", start: point, last: { x: event.clientX, y: event.clientY }, pan: { ...this.pan } };
       return;
     }
@@ -587,35 +676,35 @@ export class WebDraw extends LitElement {
     if ((this.tool === "line" || this.tool === "arrow") && this.pendingLinearId) {
       const element = this.elements.find((item) => item.id === this.pendingLinearId) as MutableElement | undefined;
       if (element) {
-        const nextPoint = [point.x - element.x, point.y - element.y], points = [...element.points.slice(0, -1), nextPoint, nextPoint];
-        this.replaceElement({ ...element, points, version: element.version + 1 } as WebdrawElement);
-        this.drag = { mode: "draw", start: point, last: point, draftId: element.id, checkpointed: true, multiPoint: true };
+        this.elements = moveLinearPointWithExcalidraw(this.elements, element.id, element.points.length - 1, point) as WebdrawElement[];
+        this.elements = appendLinearPointWithExcalidraw(this.elements, element.id, point) as WebdrawElement[];
+        this.drag = { mode: "draw", start: point, last: point, draftId: element.id, checkpointed: true, multiPoint: true, bindingDisabled: event.ctrlKey || event.metaKey };
         return;
       }
       this.pendingLinearId = null;
     }
     if (this.tool === "bucket") {
-      const hit = this.hitTest(point);
-      if (hit && !["text", "line", "arrow", "freedraw", "frame"].includes(hit.type)) {
-        this.selectedIds = new Set([hit.id]);
-        this.setBackground(this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#194a66" : "#a5d8ff") : this.backgroundColor);
-      }
+      this.drag = { mode: "bucket", start: point, last: point };
       return;
     }
     if (this.tool === "selection") {
       const editedLinear = this.editingLinearId ? this.elements.find((item) => item.id === this.editingLinearId) as MutableElement | undefined : undefined;
-      if (editedLinear?.points) {
-        const pointIndex = editedLinear.points.findIndex(([x, y]: number[]) => Math.hypot(point.x - editedLinear.x - x, point.y - editedLinear.y - y) <= 10 / this.zoom);
+      if (editedLinear?.type === "line" || editedLinear?.type === "arrow") {
+        const pointIndex = linearPointIndexAt(point, editedLinear, this.elements, this.zoom);
         if (pointIndex >= 0) { this.checkpoint(); this.drag = { mode: "point", start: point, last: point, element: structuredClone(editedLinear), pointIndex }; return; }
       }
       const transform = this.selectionHandleAt(point);
       if (transform) {
         const element = structuredClone(this.elements.find((item) => this.selectedIds.has(item.id))!) as MutableElement;
         this.checkpoint();
-        const box = this.bounds(element), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        this.drag = transform === "rotate"
-          ? { mode: "rotate", start: point, last: point, element, startAngle: Math.atan2(point.y - center.y, point.x - center.x) }
-          : { mode: element.id === this.croppingImageId ? "crop" : "resize", start: point, last: point, element, handle: transform };
+        this.drag = {
+          mode: transform === "rotate" ? "rotate" : element.id === this.croppingImageId ? "crop" : "resize",
+          start: point,
+          last: point,
+          element,
+          handle: transform === "rotate" ? undefined : transform,
+          originalElements: new Map(this.elements.map((item) => [item.id, structuredClone(item)])),
+        };
         this.canvas!.style.cursor = transform === "rotate" ? "grabbing" : cursorForHandle(transform, element.angle);
         return;
       }
@@ -630,13 +719,17 @@ export class WebDraw extends LitElement {
           next.has(hit.id) ? next.delete(hit.id) : next.add(hit.id);
           this.selectedIds = next;
         }
-        if ((event.ctrlKey || event.metaKey) && !hit.link) { this.syncStyleFromElement(hit as MutableElement); return; }
+        if ((event.ctrlKey || event.metaKey) && !hit.link) {
+          this.syncStyleFromElement(hit as MutableElement);
+          this.selectionRect = { start: point, end: point };
+          this.drag = { mode: "select", start: point, last: point };
+          return;
+        }
         if (event.altKey && !event.shiftKey) this.duplicateSelected();
         if ([...this.selectedIds].every((id) => this.elements.find((element) => element.id === id)?.locked)) return;
-        const movingIds = this.movingElementIds();
         this.drag = {
           mode: "move", start: point, last: point,
-          origins: new Map(this.elements.filter((el) => movingIds.has(el.id)).map((el) => [el.id, { x: el.x, y: el.y }])),
+          originalElements: new Map(this.elements.map((element) => [element.id, structuredClone(element)])),
         };
         this.syncStyleFromElement(hit as MutableElement);
       } else {
@@ -650,9 +743,10 @@ export class WebDraw extends LitElement {
     if (tool !== "laser") this.checkpoint();
     const base = { x: point.x, y: point.y, strokeColor: this.strokeColor, backgroundColor: this.backgroundColor, strokeWidth: this.strokeWidth, strokeStyle: this.strokeStyle, roughness: this.roughness, opacity: this.opacity, fillStyle: this.fillStyle };
     let element: WebdrawElement;
-    if (tool === "line" || tool === "arrow") {
-      element = newLinearElement({ ...base, type: tool, points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null }) as WebdrawElement;
-      if (tool === "arrow") element = { ...element, startArrowhead: this.startArrowhead, endArrowhead: this.endArrowhead, elbowed: this.arrowType === "elbow" } as WebdrawElement;
+    if (tool === "arrow") {
+      element = newArrowElement({ ...base, type: "arrow", points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null, startArrowhead: this.startArrowhead, endArrowhead: this.endArrowhead, elbowed: this.arrowType === "elbow" }) as WebdrawElement;
+    } else if (tool === "line") {
+      element = newLinearElement({ ...base, type: "line", points: [[0, 0], [0, 0]] as any, roundness: this.arrowType === "round" ? { type: ROUNDNESS.PROPORTIONAL_RADIUS } : null }) as WebdrawElement;
     } else if (tool === "freedraw" || tool === "laser") {
       element = newFreeDrawElement({ ...base, type: "freedraw", strokeColor: tool === "laser" ? "#e03131" : base.strokeColor, points: [[0, 0]] as any, simulatePressure: true, customData: tool === "laser" ? { webdrawLaser: true } : undefined }) as WebdrawElement;
     } else if (tool === "frame") {
@@ -660,12 +754,14 @@ export class WebDraw extends LitElement {
     } else if (tool === "embeddable") {
       element = newEmbeddableElement({ ...base, type: "embeddable" }) as WebdrawElement;
     } else if (tool === "stickynote") {
-      element = newElement({ ...base, type: "rectangle", strokeColor: this.strokeColor, backgroundColor: this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", customData: { webdrawSticky: true, webdrawRound: true, stickyCreated: Date.now() } }) as WebdrawElement;
+      element = newStickyNoteElement({ ...base, type: "stickynote", backgroundColor: this.backgroundColor === "transparent" ? (this.isDarkTheme() ? "#5c3d00" : "#fff3bf") : this.backgroundColor, fillStyle: "solid", roundness: { type: ROUNDNESS.ADAPTIVE_RADIUS } }) as WebdrawElement;
     } else {
       element = newElement({ ...base, type: tool as "rectangle" | "diamond" | "ellipse" }) as WebdrawElement;
     }
     this.elements = [...this.elements, element];
-    this.drag = { mode: "draw", start: point, last: point, draftId: element.id, checkpointed: true };
+    const bindingDisabled = event.ctrlKey || event.metaKey;
+    if (element.type === "arrow" && !bindingDisabled) this.elements = bindArrowEndpointWithExcalidraw(this.elements, element.id, "start", this.zoom, true) as WebdrawElement[];
+    this.drag = { mode: "draw", start: point, last: point, draftId: element.id, checkpointed: true, bindingDisabled };
   };
 
   private onPointerMove = (event: PointerEvent) => {
@@ -673,8 +769,8 @@ export class WebDraw extends LitElement {
       if (this.pendingLinearId) {
         const element = this.elements.find((item) => item.id === this.pendingLinearId) as MutableElement | undefined;
         if (element) {
-          const point = this.scenePoint(event), points = [...element.points]; points[points.length - 1] = [point.x - element.x, point.y - element.y];
-          this.replaceElement({ ...element, points, version: element.version + 1 } as WebdrawElement); this.paint(); return;
+          this.elements = moveLinearPointWithExcalidraw(this.elements, element.id, element.points.length - 1, this.scenePoint(event)) as WebdrawElement[];
+          this.paint(); return;
         }
       }
       const handle = this.tool === "selection" ? this.selectionHandleAt(this.scenePoint(event)) : null;
@@ -690,103 +786,116 @@ export class WebDraw extends LitElement {
     const point = this.scenePoint(event);
     this.drag.last = point;
     if (this.drag.mode === "erase") { this.eraseAt(point); return; }
+    if (this.drag.mode === "bucket") return;
     if (this.drag.mode === "select") {
+      if (Math.hypot(point.x - this.drag.start.x, point.y - this.drag.start.y) < 2 / this.zoom) return;
       this.selectionRect = { start: this.drag.start, end: point };
       this.selectWithin(this.selectionRect);
       this.paint();
       return;
     }
     if (this.drag.mode === "rotate") {
-      const original = this.drag.element!;
-      const box = this.bounds(original), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      let angle = original.angle + Math.atan2(point.y - center.y, point.x - center.x) - this.drag.startAngle!;
-      if (event.shiftKey) angle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
-      this.replaceElement({ ...original, angle, version: original.version + 1 } as WebdrawElement);
+      this.elements = transformElementsWithExcalidraw({ elements: this.elements, selectedIds: this.selectedIds, originals: this.drag.originalElements!, handle: "rotate", point, maintainAspectRatio: event.shiftKey, resizeFromCenter: event.altKey }) as WebdrawElement[];
       return;
     }
     if (this.drag.mode === "resize") {
-      this.replaceElement(this.resizeElement(this.drag.element!, this.drag.handle!, point, event.shiftKey));
+      this.elements = transformElementsWithExcalidraw({ elements: this.elements, selectedIds: this.selectedIds, originals: this.drag.originalElements!, handle: this.drag.handle!, point, maintainAspectRatio: event.shiftKey, resizeFromCenter: event.altKey }) as WebdrawElement[];
       return;
     }
     if (this.drag.mode === "crop") {
-      this.replaceElement(this.cropImage(this.drag.element!, this.drag.handle!, point));
+      const original = this.drag.element!;
+      if (original.type !== "image" || !original.fileId) return;
+      const cached = this.imageCache.get(original.fileId as never)?.image;
+      if (!cached || cached instanceof Promise) return;
+      this.elements = cropImageWithExcalidraw({ elements: this.elements, original, handle: this.drag.handle!, point, naturalWidth: cached.naturalWidth, naturalHeight: cached.naturalHeight }) as WebdrawElement[];
       return;
     }
     if (this.drag.mode === "point") {
-      const original = this.drag.element!, points = original.points.map((item: number[]) => [...item]);
-      points[this.drag.pointIndex!] = [point.x - original.x, point.y - original.y];
-      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
-      this.replaceElement({ ...original, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: original.version + 1 } as WebdrawElement);
+      this.elements = moveLinearPointWithExcalidraw(this.elements, this.drag.element!.id, this.drag.pointIndex!, point) as WebdrawElement[];
       return;
     }
     if (this.drag.mode === "move") {
       if (!this.drag.checkpointed) { this.checkpoint(); this.drag.checkpointed = true; }
       let dx = point.x - this.drag.start.x, dy = point.y - this.drag.start.y;
       if (this.snapToObjects) ({ x: dx, y: dy } = this.snappedDelta(this.movingElementIds(), dx, dy));
-      this.elements = this.elements.map((element) => {
-        const origin = this.drag!.origins?.get(element.id);
-        return origin ? { ...element, x: origin.x + dx, y: origin.y + dy, version: element.version + 1 } as WebdrawElement : element;
-      });
+      this.elements = dragElementsWithExcalidraw({ elements: this.elements, selectedIds: this.selectedIds, originals: this.drag.originalElements!, offset: { x: dx, y: dy } }) as WebdrawElement[];
       return;
     }
-    const index = this.elements.findIndex((element) => element.id === this.drag!.draftId);
-    if (index < 0) return;
-    const draft = this.elements[index] as MutableElement;
-    let next: MutableElement;
+    const draft = this.elements.find((element) => element.id === this.drag!.draftId) as MutableElement | undefined;
+    if (!draft) return;
     if (draft.type === "freedraw") {
-      const points = [...draft.points, [point.x - draft.x, point.y - draft.y]];
-      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
-      next = { ...draft, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: draft.version + 1 } as unknown as MutableElement;
+      this.elements = extendFreeDrawWithExcalidraw(this.elements, draft.id, point) as WebdrawElement[];
     } else if (draft.type === "line" || draft.type === "arrow") {
-      const points = this.drag.multiPoint ? [...draft.points.slice(0, -1), [point.x - draft.x, point.y - draft.y]] : [[0, 0], [point.x - this.drag.start.x, point.y - this.drag.start.y]];
-      const xs = points.map(([x]: number[]) => x), ys = points.map(([, y]: number[]) => y);
-      next = { ...draft, points, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), version: draft.version + 1 } as unknown as MutableElement;
+      this.elements = moveLinearPointWithExcalidraw(this.elements, draft.id, draft.points.length - 1, point) as WebdrawElement[];
     } else {
-      next = { ...draft, ...normalizeBounds(this.drag.start, point), version: draft.version + 1 };
+      this.elements = dragNewShapeWithExcalidraw({ elements: this.elements, elementId: draft.id, origin: this.drag.start, point, maintainAspectRatio: event.shiftKey, resizeFromCenter: event.altKey, zoom: this.zoom }) as WebdrawElement[];
     }
-    this.elements = [...this.elements.slice(0, index), next as WebdrawElement, ...this.elements.slice(index + 1)];
   };
 
-  private onPointerUp = () => {
+  private onPointerUp = (event?: PointerEvent) => {
     if (!this.drag) return;
-    let changed = this.drag.mode === "draw" || this.drag.mode === "move" || this.drag.mode === "erase" || this.drag.mode === "resize" || this.drag.mode === "rotate" || this.drag.mode === "point" || this.drag.mode === "crop";
+    if (this.viewModeEnabled && this.drag.mode === "pan" && event && Math.hypot(event.clientX - this.drag.last.x, event.clientY - this.drag.last.y) < 3) {
+      const hit = this.hitTest(this.scenePoint(event));
+      const url = hit?.link ? this.safeUrl(hit.link) : null;
+      if (url) this.ownerDocument.defaultView?.open(url, "_blank", "noopener");
+    }
+    const bindingDisabled = this.drag.bindingDisabled;
+    let bucketFilled = false;
+    if (this.drag.mode === "bucket" && event?.type !== "pointercancel") {
+      const filled = fillRegionWithExcalidraw({
+        elements: this.elements,
+        point: this.drag.start,
+        backgroundColor: this.backgroundColor === "transparent" ? COLOR_PALETTE.green[DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX] : this.backgroundColor,
+        fillStyle: this.fillStyle,
+        opacity: this.opacity,
+      });
+      if (filled) { this.checkpoint(); this.elements = filled as WebdrawElement[]; bucketFilled = true; }
+    }
+    const moved = Math.hypot(this.drag.last.x - this.drag.start.x, this.drag.last.y - this.drag.start.y) > 2 / this.zoom;
+    let changed = this.drag.mode === "draw" || this.drag.mode === "erase" || bucketFilled || ((this.drag.mode === "move" || this.drag.mode === "resize" || this.drag.mode === "rotate" || this.drag.mode === "point" || this.drag.mode === "crop") && moved);
     if (this.drag.mode === "draw") {
       let element = this.elements.find((item) => item.id === this.drag!.draftId);
       const laser = !!(element as MutableElement | undefined)?.customData?.webdrawLaser;
       const linearClick = !!element && (element.type === "line" || element.type === "arrow") && this.isTiny(element);
       if (this.drag.multiPoint) {
         this.pendingLinearId = element?.id ?? null;
+        this.pendingLinearBindingDisabled = !!bindingDisabled;
         this.selectedIds = new Set();
       } else if (linearClick) {
         this.pendingLinearId = element!.id;
+        this.pendingLinearBindingDisabled = !!bindingDisabled;
         this.selectedIds = new Set();
-      } else if (element && (element as MutableElement).customData?.webdrawSticky && this.isTiny(element)) {
-        element = { ...element, width: 250, height: 250, version: element.version + 1 } as WebdrawElement;
+      } else if (element?.type === "stickynote") {
+        const size = this.isTiny(element) ? { width: 250, height: 250 } : { width: element.width, height: element.height };
+        element = normalizeStickyNote({ ...element, ...size, baseHeight: size.height } as Extract<WebdrawElement, { type: "stickynote" }>) as WebdrawElement;
         this.replaceElement(element);
       } else if (element && this.isTiny(element)) { const id = element.id; this.elements = this.elements.filter((item) => item.id !== id); }
       else if (element && !laser) this.selectedIds = new Set([element.id]);
+      if (element?.type === "arrow" && !this.pendingLinearId && !bindingDisabled) this.elements = bindArrowEndpointWithExcalidraw(this.elements, element.id, "end", this.zoom) as WebdrawElement[];
       if (element?.type === "embeddable") {
         const url = this.ownerDocument.defaultView?.prompt("Paste a URL to embed", "https://");
         if (url) this.replaceElement({ ...element, link: url, customData: { ...(element.customData ?? {}), embedUrl: url } } as WebdrawElement);
       }
       if (element?.type === "frame") {
-        const frameBox = this.bounds(element as MutableElement);
-        this.elements = this.elements.map((item) => {
-          if (item.id === element.id || item.frameId) return item;
-          const box = this.bounds(item as MutableElement);
-          return box.x >= frameBox.x && box.y >= frameBox.y && box.x + box.width <= frameBox.x + frameBox.width && box.y + box.height <= frameBox.y + frameBox.height
-            ? { ...item, frameId: element.id, version: item.version + 1 } as WebdrawElement : item;
-        });
+        this.elements = addChildrenToNewFrameWithExcalidraw(this.elements, element.id) as WebdrawElement[];
       }
       if (laser) {
         changed = false;
         const id = element!.id;
         this.ownerDocument.defaultView?.setTimeout(() => { this.elements = this.elements.filter((item) => item.id !== id); this.requestUpdate(); }, 650);
       }
-      if ((element as MutableElement | undefined)?.customData?.webdrawSticky && this.elements.some((item) => item.id === element!.id)) {
+      if (element?.type === "stickynote" && this.elements.some((item) => item.id === element!.id)) {
         this.startTextEditing({ x: element!.x, y: element!.y }, undefined, element!.id);
       }
       if (!this.pendingLinearId && !this.toolLocked && this.tool !== "freedraw" && this.tool !== "laser") this.tool = "selection";
+    }
+    if (moved && (this.drag.mode === "move" || this.drag.mode === "resize")) {
+      this.elements = reconcileFrameMembershipWithExcalidraw(
+        this.elements,
+        this.selectedIds,
+        this.drag.last,
+        this.drag.mode,
+      ) as WebdrawElement[];
     }
     this.drag = null;
     this.selectionRect = null;
@@ -880,7 +989,7 @@ export class WebDraw extends LitElement {
     if (primary && key === "c" && this.selectedIds.size) { run(this.copySelected); return; }
     if (primary && key === "x" && this.selectedIds.size) { run(() => { this.copySelected(); this.deleteSelected(); }); return; }
     if (primary && event.shiftKey && key === "v") { run(this.pastePlaintext); return; }
-    if (primary && key === "v" && this.clipboard.length) { run(this.pasteClipboard); return; }
+    if (primary && key === "v") { run(() => void this.pasteClipboard()); return; }
     if (primary && key === "d" && this.selectedIds.size) { run(this.duplicateSelected); return; }
     if (primary && key === "g" && this.selectedIds.size) { run(event.shiftKey ? this.ungroupSelected : this.groupSelected); return; }
     if (primary && key === "z") { run(event.shiftKey ? this.redo : this.undo); return; }
@@ -945,15 +1054,9 @@ export class WebDraw extends LitElement {
     if (text.trim()) {
       this.checkpoint();
       const existing = edit.elementId ? this.elements.find((item) => item.id === edit.elementId) as MutableElement | undefined : undefined;
-      const fresh = newTextElement({ x: edit.x, y: edit.y, text, strokeColor: existing?.strokeColor ?? this.strokeColor, fontSize: edit.fontSize, fontFamily: edit.fontFamily as any, containerId: edit.containerId ?? null, textAlign: edit.textAlign, verticalAlign: edit.verticalAlign }) as MutableElement;
-      let element = existing ? { ...existing, text, originalText: text, width: fresh.width, height: fresh.height, fontSize: edit.fontSize, fontFamily: edit.fontFamily, textAlign: edit.textAlign, verticalAlign: edit.verticalAlign, version: existing.version + 1 } as WebdrawElement : fresh as WebdrawElement;
-      if (edit.containerId) {
-        const container = this.elements.find((item) => item.id === edit.containerId)!;
-        element = { ...element, ...this.labelPosition(container as MutableElement, fresh, edit.verticalAlign), containerId: container.id } as WebdrawElement;
-        if (!existing) this.elements = this.elements.map((item) => item.id === container.id ? { ...item, boundElements: [...(item.boundElements ?? []), { id: element.id, type: "text" }] } as WebdrawElement : item);
-      }
-      this.elements = existing ? this.elements.map((item) => item.id === existing.id ? element : item) : [...this.elements, element];
-      this.selectedIds = new Set([edit.containerId ?? element.id]);
+      this.elements = commitTextWithExcalidraw({ elements: this.elements, elementId: edit.elementId, containerId: edit.containerId, point: { x: edit.x, y: edit.y }, text, strokeColor: existing?.strokeColor ?? this.strokeColor, fontSize: edit.fontSize, fontFamily: edit.fontFamily, textAlign: edit.textAlign, verticalAlign: edit.verticalAlign }) as WebdrawElement[];
+      const element = edit.elementId ? this.elements.find((item) => item.id === edit.elementId) : this.elements.at(-1);
+      this.selectedIds = new Set([edit.containerId ?? element!.id]);
       this.emitChange();
     } else if (edit.elementId) {
       this.selectedIds = new Set([edit.elementId]);
@@ -966,12 +1069,12 @@ export class WebDraw extends LitElement {
 
   private startTextEditing(point: Point, element?: MutableElement, containerId?: string) {
     if (element) {
-      this.editingText = { x: element.x, y: element.y, fontSize: element.fontSize ?? this.fontSize, fontFamily: element.fontFamily ?? this.fontFamily, textAlign: element.textAlign ?? this.textAlign, verticalAlign: element.verticalAlign ?? this.verticalAlign, width: element.width, elementId: element.id, containerId: element.containerId ?? undefined };
+      this.editingText = { x: element.x, y: element.y, fontSize: element.fontSize ?? this.fontSize, fontFamily: element.fontFamily ?? this.fontFamily, textAlign: element.textAlign ?? this.textAlign, verticalAlign: element.verticalAlign ?? this.verticalAlign, width: element.width, angle: element.type === "text" ? textElementAngle(element, this.elements) : element.angle, elementId: element.id, containerId: element.containerId ?? undefined };
       this.textDraft = element.text ?? "";
       this.selectedIds = new Set([element.id]);
     } else if (containerId) {
       const container = this.elements.find((item) => item.id === containerId)!;
-      this.editingText = { x: container.x + 8, y: container.y + container.height / 2 - this.fontSize / 2, width: Math.max(64, container.width - 16), fontSize: this.fontSize, fontFamily: this.fontFamily, textAlign: "center", verticalAlign: "middle", containerId };
+      this.editingText = { x: container.x + 8, y: container.y + container.height / 2 - this.fontSize / 2, width: Math.max(64, container.width - 16), fontSize: this.fontSize, fontFamily: this.fontFamily, textAlign: "center", verticalAlign: "middle", angle: container.angle, containerId };
       this.textDraft = "";
       this.selectedIds = new Set([containerId]);
     } else {
@@ -981,13 +1084,7 @@ export class WebDraw extends LitElement {
   }
 
   private replaceElement(element: WebdrawElement) {
-    const mutable = element as MutableElement;
-    const labelIds = new Set(element.boundElements?.filter((binding) => binding.type === "text").map((binding) => binding.id));
-    this.elements = this.elements.map((item) => {
-      if (item.id === element.id) return element;
-      if (!labelIds.has(item.id)) return item;
-      return { ...item, ...this.labelPosition(mutable, item as MutableElement, (item as MutableElement).verticalAlign), angle: mutable.angle ?? 0, version: item.version + 1 } as WebdrawElement;
-    });
+    this.elements = replaceElementWithExcalidraw(this.elements, element) as WebdrawElement[];
   }
 
   private syncStyleFromElement(element: MutableElement) {
@@ -1004,7 +1101,7 @@ export class WebDraw extends LitElement {
       this.fontSize = label.fontSize ?? this.fontSize;
       this.textAlign = label.textAlign ?? this.textAlign;
       this.verticalAlign = label.verticalAlign ?? this.verticalAlign;
-      if (element.customData?.webdrawSticky) this.strokeColor = label.strokeColor ?? element.strokeColor;
+      if (element.type === "stickynote") this.strokeColor = label.strokeColor ?? element.strokeColor;
     }
     if (element.type === "arrow") {
       this.arrowType = element.elbowed ? "elbow" : element.roundness ? "round" : "sharp";
@@ -1018,78 +1115,13 @@ export class WebDraw extends LitElement {
     return id ? this.elements.find((item) => item.id === id) as MutableElement | undefined : undefined;
   }
 
-  private labelPosition(container: MutableElement, label: MutableElement, verticalAlign: VerticalAlign = "middle") {
-    const footer = container.customData?.webdrawSticky ? 36 : 0;
-    const y = verticalAlign === "top" ? container.y + 16 : verticalAlign === "bottom" ? container.y + container.height - label.height - 16 - footer : container.y + (container.height - footer - label.height) / 2;
-    return { x: container.x + (container.width - label.width) / 2, y };
-  }
-
   private selectionHandleAt(point: Point): ResizeHandle | "rotate" | null {
-    if (this.selectedIds.size !== 1) return null;
-    const element = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
-    if (!element || element.locked) return null;
-    const box = this.bounds(element), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const local = rotatePoint(point, center, -(element.angle ?? 0));
-    const gap = 4 / this.zoom, threshold = 9 / this.zoom;
-    const handles: [ResizeHandle | "rotate", Point][] = [
-      ["nw", { x: box.x - gap, y: box.y - gap }], ["n", { x: center.x, y: box.y - gap }], ["ne", { x: box.x + box.width + gap, y: box.y - gap }],
-      ["e", { x: box.x + box.width + gap, y: center.y }], ["se", { x: box.x + box.width + gap, y: box.y + box.height + gap }],
-      ["s", { x: center.x, y: box.y + box.height + gap }], ["sw", { x: box.x - gap, y: box.y + box.height + gap }], ["w", { x: box.x - gap, y: center.y }],
-      ["rotate", { x: center.x, y: box.y - gap - 24 / this.zoom }],
-    ];
-    return handles.find(([, handle]) => Math.hypot(local.x - handle.x, local.y - handle.y) <= threshold)?.[0] ?? null;
-  }
-
-  private resizeElement(original: MutableElement, handle: ResizeHandle, point: Point, keepRatio: boolean): WebdrawElement {
-    const old = this.bounds(original), center = { x: old.x + old.width / 2, y: old.y + old.height / 2 };
-    const local = rotatePoint(point, center, -(original.angle ?? 0));
-    let left = old.x, top = old.y, right = old.x + old.width, bottom = old.y + old.height;
-    if (handle.includes("w")) left = local.x;
-    if (handle.includes("e")) right = local.x;
-    if (handle.includes("n")) top = local.y;
-    if (handle.includes("s")) bottom = local.y;
-    if (keepRatio && old.width && old.height) {
-      const ratio = old.width / old.height;
-      if (Math.abs(right - left) / Math.max(1, Math.abs(bottom - top)) > ratio) {
-        const height = Math.abs(right - left) / ratio;
-        handle.includes("n") ? top = bottom - height : bottom = top + height;
-      } else {
-        const width = Math.abs(bottom - top) * ratio;
-        handle.includes("w") ? left = right - width : right = left + width;
-      }
-    }
-    const localBounds = normalizeBounds({ x: left, y: top }, { x: right, y: bottom });
-    localBounds.width = Math.max(5, localBounds.width); localBounds.height = Math.max(5, localBounds.height);
-    const localCenter = { x: localBounds.x + localBounds.width / 2, y: localBounds.y + localBounds.height / 2 };
-    const worldCenter = rotatePoint(localCenter, center, original.angle ?? 0);
-    const next = { x: worldCenter.x - localBounds.width / 2, y: worldCenter.y - localBounds.height / 2, width: localBounds.width, height: localBounds.height };
-    if (original.points?.length) {
-      const sx = next.width / Math.max(old.width, 1), sy = next.height / Math.max(old.height, 1);
-      const points = original.points.map(([x, y]: number[]) => [((original.x + x) - old.x) * sx, ((original.y + y) - old.y) * sy]);
-      return { ...original, ...next, points, version: original.version + 1 } as unknown as WebdrawElement;
-    }
-    const fontSize = original.type === "text" ? Math.max(1, original.fontSize * (next.height / Math.max(old.height, 1))) : original.fontSize;
-    return { ...original, ...next, ...(fontSize ? { fontSize } : {}), version: original.version + 1 } as WebdrawElement;
-  }
-
-  private cropImage(original: MutableElement, handle: ResizeHandle, point: Point): WebdrawElement {
-    const resized = this.resizeElement(original, handle, point, false) as MutableElement;
-    const crop = original.customData?.crop ?? { x: 0, y: 0, width: 1, height: 1 };
-    const left = handle.includes("w") ? (resized.x - original.x) / original.width : 0;
-    const top = handle.includes("n") ? (resized.y - original.y) / original.height : 0;
-    const width = resized.width / original.width, height = resized.height / original.height;
-    const x = Math.max(0, Math.min(crop.x + crop.width * left, crop.x + crop.width - .01));
-    const y = Math.max(0, Math.min(crop.y + crop.height * top, crop.y + crop.height - .01));
-    const nextCrop = { x, y, width: Math.max(.01, Math.min(1 - x, crop.width * width)), height: Math.max(.01, Math.min(1 - y, crop.height * height)) };
-    return { ...resized, customData: { ...(original.customData ?? {}), crop: nextCrop } } as WebdrawElement;
+    const selected = this.elements.filter((item) => this.selectedIds.has(item.id) && !item.locked);
+    return selected.length === this.selectedIds.size ? selectionTransformHandleAt(point, selected, this.elements, this.zoom) : null;
   }
 
   private bounds(element: MutableElement) {
-    if (element.points) {
-      const xs = element.points.map(([x]: number[]) => element.x + x), ys = element.points.map(([, y]: number[]) => element.y + y);
-      return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
-    }
-    return normalizeBounds({ x: element.x, y: element.y }, { x: element.x + element.width, y: element.y + element.height });
+    return elementBounds(element, this.elements);
   }
 
   private hitTest(point: Point) {
@@ -1097,20 +1129,11 @@ export class WebDraw extends LitElement {
   }
 
   private hitTestAll(point: Point) {
-    const threshold = 8 / this.zoom;
-    return [...this.elements].reverse().filter((item) => {
-      const element = item as MutableElement, box = this.bounds(element), center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      const local = rotatePoint(point, center, -(element.angle ?? 0));
-      return local.x >= box.x - threshold && local.x <= box.x + box.width + threshold && local.y >= box.y - threshold && local.y <= box.y + box.height + threshold;
-    });
+    return hitElements(point, this.elements, 8 / this.zoom);
   }
 
   private selectWithin(rect: { start: Point; end: Point }) {
-    const area = normalizeBounds(rect.start, rect.end);
-    this.selectedIds = new Set(this.elements.filter((item) => {
-      const box = this.bounds(item as MutableElement);
-      return box.x >= area.x && box.y >= area.y && box.x + box.width <= area.x + area.width && box.y + box.height <= area.y + area.height;
-    }).map((item) => item.id));
+    this.selectedIds = selectElementsWithinExcalidraw(rect, this.elements);
   }
 
   private eraseAt(point: Point) {
@@ -1161,11 +1184,9 @@ export class WebDraw extends LitElement {
   }
 
   private removeElements(deletedIds: Set<string>) {
-    for (const element of this.elements.filter((item) => deletedIds.has(item.id))) {
-      for (const binding of element.boundElements ?? []) if (binding.type === "text") deletedIds.add(binding.id);
-    }
-    this.elements = this.elements.filter((item) => !deletedIds.has(item.id)).map((item) => ({ ...item, frameId: item.frameId && deletedIds.has(item.frameId) ? null : item.frameId, boundElements: item.boundElements?.filter((binding) => !deletedIds.has(binding.id)) ?? null } as WebdrawElement));
-    return deletedIds;
+    const result = removeElementsWithExcalidraw(this.elements, deletedIds);
+    this.elements = result.elements as WebdrawElement[];
+    return result.deletedIds;
   }
 
   private setZoom(value: number) { this.zoom = Math.min(30, Math.max(.1, Math.round(value * 10) / 10)); }
@@ -1184,7 +1205,7 @@ export class WebDraw extends LitElement {
   private updateSelected(patch: Record<string, unknown>) {
     if (!this.selectedIds.size) return;
     this.checkpoint();
-    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) ? { ...item, ...patch, version: item.version + 1 } as WebdrawElement : item);
+    this.elements = updateElementsWithExcalidraw(this.elements, this.selectedIds, patch) as WebdrawElement[];
     this.emitChange();
   }
 
@@ -1192,11 +1213,11 @@ export class WebDraw extends LitElement {
     this.strokeColor = value;
     if (this.selectedIds.size) {
       const ids = new Set(this.selectedIds);
-      for (const item of this.elements.filter((element) => ids.has(element.id) && (element as MutableElement).customData?.webdrawSticky)) {
+      for (const item of this.elements.filter((element) => ids.has(element.id) && element.type === "stickynote")) {
         for (const binding of item.boundElements ?? []) if (binding.type === "text") ids.add(binding.id);
       }
       this.checkpoint();
-      this.elements = this.elements.map((item) => ids.has(item.id) ? { ...item, strokeColor: value, version: item.version + 1 } as WebdrawElement : item);
+      this.elements = updateElementsWithExcalidraw(this.elements, ids, { strokeColor: value }) as WebdrawElement[];
       this.emitChange();
     }
     this.requestUpdate();
@@ -1210,7 +1231,7 @@ export class WebDraw extends LitElement {
     const selected = this.elements.find((item) => this.selectedIds.has(item.id));
     if (!selected) return;
     this.checkpoint();
-    this.elements = this.elements.map((item) => item.id === selected.id ? { ...item, customData: { ...(item.customData ?? {}), webdrawRound: round }, version: item.version + 1 } as WebdrawElement : item);
+    this.elements = updateElementsWithExcalidraw(this.elements, new Set([selected.id]), { roundness: round ? { type: ROUNDNESS.ADAPTIVE_RADIUS } : null }) as WebdrawElement[];
     this.emitChange();
   }
   private onOpacity = (event: Event) => {
@@ -1218,8 +1239,8 @@ export class WebDraw extends LitElement {
     if (!this.selectedIds.size) { this.requestUpdate(); return; }
     const ids = new Set(this.selectedIds);
     for (const item of this.elements.filter((element) => ids.has(element.id))) for (const binding of item.boundElements ?? []) if (binding.type === "text") ids.add(binding.id);
-    this.checkpoint();
-    this.elements = this.elements.map((item) => ids.has(item.id) ? { ...item, opacity: this.opacity, version: item.version + 1 } as WebdrawElement : item);
+    if (!this.opacityCheckpointed) { this.checkpoint(); this.opacityCheckpointed = true; }
+    this.elements = updateElementsWithExcalidraw(this.elements, ids, { opacity: this.opacity }) as WebdrawElement[];
     this.emitChange(); this.requestUpdate();
   };
   private setCanvasColor(value: string) { this.canvasColor = value; this.requestUpdate(); }
@@ -1233,14 +1254,7 @@ export class WebDraw extends LitElement {
     }
     if (!ids.size) { this.requestUpdate(); return; }
     this.checkpoint();
-    this.elements = this.elements.map((item) => {
-      if (!ids.has(item.id)) return item;
-      const source = { ...(item as MutableElement), ...patch };
-      const fresh = newTextElement({ x: source.x, y: source.y, text: source.text, strokeColor: source.strokeColor, fontSize: source.fontSize, fontFamily: source.fontFamily, textAlign: source.textAlign, verticalAlign: source.verticalAlign, containerId: source.containerId ?? null }) as MutableElement;
-      const resized = { ...source, width: fresh.width, height: fresh.height, version: source.version + 1 } as MutableElement;
-      const container = source.containerId ? this.elements.find((candidate) => candidate.id === source.containerId) as MutableElement | undefined : undefined;
-      return { ...resized, ...(container ? this.labelPosition(container, resized, source.verticalAlign) : {}) } as WebdrawElement;
-    });
+    this.elements = updateTextStylesWithExcalidraw(this.elements, ids, patch as never) as WebdrawElement[];
     this.emitChange();
   }
 
@@ -1264,27 +1278,126 @@ export class WebDraw extends LitElement {
     if (!this.selectedIds.size) return;
     this.checkpoint();
     const sourceIds = this.movingElementIds();
-    const sources = this.elements.filter((item) => sourceIds.has(item.id));
-    const ids = new Map(sources.map((item) => [item.id, this.ownerDocument.defaultView!.crypto.randomUUID()]));
-    const copies = sources.map((item) => { const mutable = item as MutableElement; return { ...structuredClone(item), id: ids.get(item.id)!, x: item.x + 20, y: item.y + 20, containerId: mutable.containerId ? ids.get(mutable.containerId) ?? null : null, frameId: item.frameId ? ids.get(item.frameId) ?? item.frameId : null, boundElements: item.boundElements?.map((binding) => ({ ...binding, id: ids.get(binding.id) ?? binding.id })) ?? null, version: 1 } as WebdrawElement; });
-    this.elements = [...this.elements, ...copies];
-    this.selectedIds = new Set([...this.selectedIds].map((id) => ids.get(id)!));
+    const result = duplicateElementsWithExcalidraw(this.elements, sourceIds);
+    this.elements = result.elements as WebdrawElement[];
+    this.selectedIds = new Set([...this.selectedIds].flatMap((id) => result.idMap.get(id) ?? []));
     this.emitChange();
   };
 
-  private copySelected = () => {
+  private copySelected = async () => {
     const ids = this.movingElementIds();
     this.clipboard = structuredClone(this.elements.filter((item) => ids.has(item.id)));
+    const fileIds = new Set(this.clipboard.flatMap((element) => element.type === "image" && element.fileId ? [element.fileId] : []));
+    const files = Object.fromEntries(Object.entries(this.files).filter(([id]) => fileIds.has(id as never)));
+    try {
+      await this.ownerDocument.defaultView?.navigator.clipboard.writeText(JSON.stringify({ type: "excalidraw/clipboard", elements: this.clipboard, files }));
+    } catch { /* Keep the in-memory fallback when browser permission is denied. */ }
   };
 
-  private pasteClipboard = () => {
-    if (!this.clipboard.length) return;
+  private pasteClipboard = async () => {
+    let source = this.clipboard;
+    let files: WebdrawBinaryFiles = {};
+    try {
+      const value = await this.ownerDocument.defaultView?.navigator.clipboard.readText();
+      if (value) {
+        try {
+          const data = JSON.parse(value);
+          if (Array.isArray(data.elements)) { source = data.elements; files = data.files ?? {}; }
+          else { this.pasteText(value); return; }
+        } catch { this.pasteText(value); return; }
+      }
+    } catch { /* Use the in-memory fallback. */ }
+    if (!source.length) return;
     this.checkpoint();
-    const ids = new Map(this.clipboard.map((item) => [item.id, this.ownerDocument.defaultView!.crypto.randomUUID()]));
-    const copies = this.clipboard.map((item) => { const mutable = item as MutableElement; return { ...structuredClone(item), id: ids.get(item.id)!, x: item.x + 20, y: item.y + 20, containerId: mutable.containerId ? ids.get(mutable.containerId) ?? null : null, frameId: item.frameId ? ids.get(item.frameId) ?? item.frameId : null, boundElements: item.boundElements?.map((binding) => ({ ...binding, id: ids.get(binding.id) ?? binding.id })) ?? null, version: 1 } as WebdrawElement; });
+    const copies = duplicateExternalElementsWithExcalidraw(source) as WebdrawElement[];
+    this.files = { ...this.files, ...files };
+    this.loadSceneImages();
     this.elements = [...this.elements, ...copies];
     this.selectedIds = new Set(copies.filter((item) => !(item as MutableElement).containerId).map((item) => item.id));
     this.emitChange();
+  };
+
+  private pasteText(value: string) {
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    this.startTextEditing({ x: (rect.width / 2 - this.pan.x) / this.zoom, y: (rect.height / 2 - this.pan.y) / this.zoom });
+    this.textDraft = value;
+    this.commitText();
+  }
+
+  private saveLibrary(items: LibraryItem[]) {
+    this.libraryItems = items;
+    try { this.ownerDocument.defaultView?.localStorage.setItem("webdraw-library", JSON.stringify(items)); }
+    catch { /* The host can persist webdraw-library-change instead. */ }
+    this.dispatchEvent(new CustomEvent("webdraw-library-change", { detail: { libraryItems: items }, bubbles: true, composed: true }));
+  }
+
+  private addSelectedToLibrary = () => {
+    const selected = selectedElementsWithBindings(this.elements, this.selectedIds);
+    if (!selected.length) return;
+    if (selected.some((element) => LIBRARY_DISABLED_TYPES.has(element.type as never))) {
+      this.ownerDocument.defaultView?.alert("Images and embeds cannot be added to the library.");
+      return;
+    }
+    const item: LibraryItem = {
+      id: this.ownerDocument.defaultView!.crypto.randomUUID(),
+      status: "unpublished",
+      elements: selected.map((element) => deepCopyElement(element) as WebdrawElement),
+      created: Date.now(),
+    };
+    this.saveLibrary([item, ...this.libraryItems]);
+  };
+
+  private insertLibraryItem(item: LibraryItem) {
+    const copies = duplicateExternalElementsWithExcalidraw(item.elements) as WebdrawElement[];
+    if (!copies.length || !this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const center = { x: (rect.width / 2 - this.pan.x) / this.zoom, y: (rect.height / 2 - this.pan.y) / this.zoom };
+    const box = commonBounds(copies);
+    const ids = new Set(copies.filter((element) => !(element as MutableElement).containerId).map((element) => element.id));
+    const shifted = dragElementsWithExcalidraw({
+      elements: copies,
+      selectedIds: ids,
+      originals: new Map(copies.map((element) => [element.id, structuredClone(element)])),
+      offset: { x: center.x - box.x - box.width / 2, y: center.y - box.y - box.height / 2 },
+    }) as WebdrawElement[];
+    this.checkpoint();
+    this.elements = [...this.elements, ...shifted];
+    this.selectedIds = ids;
+    this.libraryOpen = false;
+    this.emitChange();
+  }
+
+  private removeLibraryItem(id: string) {
+    this.saveLibrary(this.libraryItems.filter((item) => item.id !== id));
+  }
+
+  private importLibrary = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.type !== EXPORT_DATA_TYPES.excalidrawLibrary || ![1, 2].includes(data.version) || !Array.isArray(data.libraryItems ?? data.library)) throw new Error("Invalid Excalidraw library");
+      const items = (data.libraryItems ?? data.library).map((candidate: unknown) => {
+        const item = Array.isArray(candidate) ? { elements: candidate } : candidate;
+        if (!item || typeof item !== "object" || !Array.isArray((item as LibraryItem).elements) || !(item as LibraryItem).elements.every((element) => element && typeof element.id === "string" && typeof element.type === "string")) throw new Error("Invalid library item");
+        return {
+          id: (item as LibraryItem).id || this.ownerDocument.defaultView!.crypto.randomUUID(),
+          status: (item as LibraryItem).status === "published" ? "published" : "unpublished",
+          elements: (item as LibraryItem).elements,
+          created: (item as LibraryItem).created || Date.now(),
+          name: (item as LibraryItem).name,
+        } as LibraryItem;
+      });
+      this.saveLibrary([...items, ...this.libraryItems]);
+    } catch (error) { this.ownerDocument.defaultView?.alert(error instanceof Error ? error.message : "Invalid Excalidraw library"); }
+    input.value = "";
+  };
+
+  private exportLibrary = () => {
+    const data = { type: EXPORT_DATA_TYPES.excalidrawLibrary, version: VERSIONS.excalidrawLibrary, source: "webdraw", libraryItems: this.libraryItems };
+    this.download(new Blob([JSON.stringify(data, null, 2)], { type: MIME_TYPES.excalidrawlib }), "library.excalidrawlib");
   };
 
   private groupSelectionFor(element: WebdrawElement) {
@@ -1306,8 +1419,8 @@ export class WebDraw extends LitElement {
 
   private nudgeSelected(dx: number, dy: number, amount: number) {
     this.checkpoint();
-    const ids = this.movingElementIds();
-    this.elements = this.elements.map((item) => ids.has(item.id) && !item.locked ? { ...item, x: item.x + dx * amount, y: item.y + dy * amount, version: item.version + 1 } as WebdrawElement : item);
+    const originals = new Map(this.elements.map((element) => [element.id, structuredClone(element)]));
+    this.elements = dragElementsWithExcalidraw({ elements: this.elements, selectedIds: this.selectedIds, originals, offset: { x: dx * amount, y: dy * amount } }) as WebdrawElement[];
     this.emitChange();
   }
 
@@ -1333,13 +1446,13 @@ export class WebDraw extends LitElement {
     if (this.selectedIds.size < 2) return;
     const groupId = this.ownerDocument.defaultView!.crypto.randomUUID();
     this.checkpoint();
-    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) ? { ...item, groupIds: [...item.groupIds, groupId], version: item.version + 1 } as WebdrawElement : item);
+    this.elements = groupElementsWithExcalidraw(this.elements, this.selectedIds, groupId) as WebdrawElement[];
     this.emitChange();
   };
 
   private ungroupSelected = () => {
     this.checkpoint();
-    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) ? { ...item, groupIds: item.groupIds.slice(0, -1), version: item.version + 1 } as WebdrawElement : item);
+    this.elements = ungroupElementsWithExcalidraw(this.elements, this.selectedIds) as WebdrawElement[];
     this.emitChange();
   };
 
@@ -1351,22 +1464,14 @@ export class WebDraw extends LitElement {
   private moveSelectedLayer(direction: -1 | 1) {
     if (!this.selectedIds.size) return;
     this.checkpoint();
-    const ids = this.movingElementIds();
-    const next = [...this.elements];
-    if (direction < 0) {
-      for (let index = 1; index < next.length; index++) if (ids.has(next[index].id) && !ids.has(next[index - 1].id)) [next[index - 1], next[index]] = [next[index], next[index - 1]];
-    } else {
-      for (let index = next.length - 2; index >= 0; index--) if (ids.has(next[index].id) && !ids.has(next[index + 1].id)) [next[index], next[index + 1]] = [next[index + 1], next[index]];
-    }
-    this.elements = next;
+    this.elements = moveElementsInLayerWithExcalidraw(this.elements, this.selectedIds, direction < 0 ? "backward" : "forward") as WebdrawElement[];
     this.emitChange();
   }
 
   private moveSelectedToEdge(edge: "back" | "front") {
     if (!this.selectedIds.size) return;
     this.checkpoint();
-    const ids = this.movingElementIds(), selected = this.elements.filter((item) => ids.has(item.id)), rest = this.elements.filter((item) => !ids.has(item.id));
-    this.elements = edge === "back" ? [...selected, ...rest] : [...rest, ...selected];
+    this.elements = moveElementsInLayerWithExcalidraw(this.elements, this.selectedIds, edge) as WebdrawElement[];
     this.emitChange();
   }
 
@@ -1386,26 +1491,29 @@ export class WebDraw extends LitElement {
     if (!this.styleClipboard) return;
     const textKeys = ["fontFamily", "fontSize", "textAlign", "verticalAlign"], text = Object.fromEntries(Object.entries(this.styleClipboard).filter(([key]) => textKeys.includes(key)));
     const shape = Object.fromEntries(Object.entries(this.styleClipboard).filter(([key]) => !textKeys.includes(key)));
-    if (Object.keys(shape).length) this.updateSelected(shape);
-    if (Object.keys(text).length) this.updateTextStyle(text);
+    const textIds = new Set<string>();
+    for (const item of this.elements) {
+      if (this.selectedIds.has(item.id) && item.type === "text") textIds.add(item.id);
+      if (this.selectedIds.has(item.id)) for (const binding of item.boundElements ?? []) if (binding.type === "text") textIds.add(binding.id);
+    }
+    this.checkpoint();
+    let elements = Object.keys(shape).length ? updateElementsWithExcalidraw(this.elements, this.selectedIds, shape) : this.elements;
+    if (Object.keys(text).length && textIds.size) elements = updateTextStylesWithExcalidraw(elements, textIds, text as never);
+    this.elements = elements as WebdrawElement[];
+    this.emitChange();
   };
 
   private alignSelected(key: string) {
-    const selected = this.elements.filter((item) => this.selectedIds.has(item.id));
-    if (selected.length < 2) return;
-    const boxes = selected.map((item) => this.bounds(item as MutableElement));
-    const target = key === "ArrowLeft" ? Math.min(...boxes.map((box) => box.x)) : key === "ArrowRight" ? Math.max(...boxes.map((box) => box.x + box.width)) : key === "ArrowUp" ? Math.min(...boxes.map((box) => box.y)) : Math.max(...boxes.map((box) => box.y + box.height));
+    if (this.selectedIds.size < 2) return;
     this.checkpoint();
-    const offsets = new Map(selected.map((item, index) => [item.id, key === "ArrowLeft" ? { x: target - boxes[index].x, y: 0 } : key === "ArrowRight" ? { x: target - boxes[index].x - boxes[index].width, y: 0 } : key === "ArrowUp" ? { x: 0, y: target - boxes[index].y } : { x: 0, y: target - boxes[index].y - boxes[index].height }]));
-    for (const selectedItem of selected) for (const binding of selectedItem.boundElements ?? []) if (binding.type === "text") offsets.set(binding.id, offsets.get(selectedItem.id)!);
-    this.elements = this.elements.map((item) => { const offset = offsets.get(item.id); return offset ? { ...item, x: item.x + offset.x, y: item.y + offset.y, version: item.version + 1 } as WebdrawElement : item; });
+    this.elements = alignElementsWithExcalidraw(this.elements, this.selectedIds, { axis: key === "ArrowLeft" || key === "ArrowRight" ? "x" : "y", position: key === "ArrowLeft" || key === "ArrowUp" ? "start" : "end" }) as WebdrawElement[];
     this.emitChange();
   }
 
   private flipSelected(axis: "horizontal" | "vertical") {
     if (!this.selectedIds.size) return;
     this.checkpoint();
-    this.elements = this.elements.map((item) => this.selectedIds.has(item.id) ? { ...item, customData: { ...(item.customData ?? {}), [axis === "horizontal" ? "webdrawFlipX" : "webdrawFlipY"]: !(item as MutableElement).customData?.[axis === "horizontal" ? "webdrawFlipX" : "webdrawFlipY"] }, version: item.version + 1 } as WebdrawElement : item);
+    this.elements = flipElementsWithExcalidraw(this.elements, this.selectedIds, axis) as WebdrawElement[];
     this.emitChange();
   }
 
@@ -1418,29 +1526,25 @@ export class WebDraw extends LitElement {
   }
 
   private createFlowchartNode(key: string) {
-    const source = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
-    if (!source || ["text", "line", "arrow", "freedraw", "image", "frame", "embeddable"].includes(source.type)) return;
-    const horizontal = key === "ArrowLeft" || key === "ArrowRight", sign = key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1;
-    const distance = (horizontal ? Math.max(source.width, 120) : Math.max(source.height, 80)) + 100;
-    const dx = horizontal ? sign * distance : 0, dy = horizontal ? 0 : sign * distance;
-    const sourceIds = this.movingElementIds(), originals = this.elements.filter((item) => sourceIds.has(item.id));
-    const ids = new Map(originals.map((item) => [item.id, this.ownerDocument.defaultView!.crypto.randomUUID()]));
-    const copies = originals.map((item) => { const mutable = item as MutableElement; return { ...structuredClone(item), id: ids.get(item.id)!, x: item.x + dx, y: item.y + dy, containerId: mutable.containerId ? ids.get(mutable.containerId) ?? null : null, frameId: null, boundElements: item.boundElements?.map((binding) => ({ ...binding, id: ids.get(binding.id) ?? binding.id })) ?? null, version: 1 } as WebdrawElement; });
-    const connector = newLinearElement({ type: "arrow", x: source.x + source.width / 2, y: source.y + source.height / 2, points: [[0, 0], [dx, dy]] as any, strokeColor: this.strokeColor, backgroundColor: "transparent", strokeWidth: this.strokeWidth, strokeStyle: this.strokeStyle, roughness: this.roughness, opacity: this.opacity, roundness: { type: ROUNDNESS.PROPORTIONAL_RADIUS } }) as WebdrawElement;
-    this.checkpoint(); this.elements = [...this.elements, connector, ...copies]; this.selectedIds = new Set([ids.get(source.id)!]); this.emitChange();
+    const source = this.elements.find((item) => this.selectedIds.has(item.id));
+    if (!source) return;
+    const direction = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[key] as "up" | "right" | "down" | "left";
+    const result = createFlowchartNodeWithExcalidraw(this.elements, source.id, direction, this.endArrowhead);
+    if (!result?.nodeId) return;
+    this.checkpoint();
+    this.elements = result.elements as WebdrawElement[];
+    this.selectedIds = new Set([result.nodeId]);
+    this.emitChange();
   }
 
   private navigateFlowchart(key: string) {
-    const source = this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined;
+    const source = this.elements.find((item) => this.selectedIds.has(item.id));
     if (!source) return;
-    const center = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
-    const candidates = this.elements.filter((item) => item.id !== source.id && !(item as MutableElement).containerId && !["line", "arrow"].includes(item.type)).map((item) => {
-      const box = this.bounds(item as MutableElement), dx = box.x + box.width / 2 - center.x, dy = box.y + box.height / 2 - center.y;
-      const forward = key === "ArrowLeft" ? -dx : key === "ArrowRight" ? dx : key === "ArrowUp" ? -dy : dy;
-      const cross = key === "ArrowLeft" || key === "ArrowRight" ? Math.abs(dy) : Math.abs(dx);
-      return { item, forward, score: Math.hypot(dx, dy) + cross };
-    }).filter((candidate) => candidate.forward > 0).sort((a, b) => a.score - b.score);
-    if (candidates[0]) { this.selectedIds = new Set([candidates[0].item.id]); this.syncStyleFromElement(candidates[0].item as MutableElement); this.requestUpdate(); }
+    const direction = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[key] as "up" | "right" | "down" | "left";
+    const map = new Map(this.elements.map((element) => [element.id, element])) as never;
+    const id = this.flowchartNavigator.exploreByDirection(source, map, direction);
+    const target = id ? this.elements.find((element) => element.id === id) : undefined;
+    if (target) { this.selectedIds = new Set([target.id]); this.syncStyleFromElement(target as MutableElement); this.requestUpdate(); }
   }
 
   private fitElements(elements: readonly WebdrawElement[]) {
@@ -1480,11 +1584,11 @@ export class WebDraw extends LitElement {
   }
 
   private emitChange() {
-    this.dispatchEvent(new CustomEvent("webdraw-change", { detail: { elements: this.elements, appState: this.getAppState() }, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent("webdraw-change", { detail: { elements: this.elements, appState: this.getAppState(), files: this.files }, bubbles: true, composed: true }));
   }
 
   private saveScene = () => {
-    const data = JSON.stringify({ type: "excalidraw", version: 2, source: "webdraw", elements: this.elements, appState: this.getAppState(), files: {} }, null, 2);
+    const data = JSON.stringify({ type: "excalidraw", version: 2, source: "webdraw", elements: this.elements, appState: this.getAppState(), files: this.files }, null, 2);
     this.download(new Blob([data], { type: "application/json" }), "drawing.excalidraw");
     this.menuOpen = false;
   };
@@ -1534,11 +1638,11 @@ export class WebDraw extends LitElement {
   };
 
   private exportElements() {
-    return this.exportSelectionOnly && this.selectedIds.size ? this.elements.filter((item) => this.selectedIds.has(item.id)) : this.elements;
+    return this.exportSelectionOnly && this.selectedIds.size ? selectedElementsWithBindings(this.elements, this.selectedIds) : this.elements;
   }
 
   private serializedScene() {
-    return JSON.stringify({ type: "excalidraw", version: 2, source: "webdraw", elements: this.exportElements(), appState: this.getAppState(), files: {} });
+    return JSON.stringify({ type: "excalidraw", version: 2, source: "webdraw", elements: this.exportElements(), appState: this.getAppState(), files: this.files });
   }
 
   private createExportCanvas() {
@@ -1552,9 +1656,8 @@ export class WebDraw extends LitElement {
     const context = canvas.getContext("2d")!;
     if (this.exportBackground) { context.fillStyle = this.exportDarkMode ? "#121212" : this.canvasColor; context.fillRect(0, 0, canvas.width, canvas.height); }
     context.scale(this.exportScale, this.exportScale);
-    context.translate(padding - minX, padding - minY);
     const roughCanvas = rough.canvas(canvas);
-    for (const element of elements) this.paintElement(context, roughCanvas, element as MutableElement, this.exportDarkMode);
+    renderExcalidrawElements({ elements, context, roughCanvas, imageCache: this.imageCache, theme: this.exportDarkMode ? "dark" : "light", zoom: 1, scrollX: padding - minX, scrollY: padding - minY, canvasBackgroundColor: this.canvasColor, isExporting: true });
     return canvas;
   }
 
@@ -1576,8 +1679,10 @@ export class WebDraw extends LitElement {
       this.checkpoint();
       const rect = this.canvas!.getBoundingClientRect(), width = Math.min(400, image.naturalWidth), height = width * image.naturalHeight / image.naturalWidth;
       const point = { x: (rect.width / 2 - this.pan.x) / this.zoom, y: (rect.height / 2 - this.pan.y) / this.zoom };
-      const element = newImageElement({ type: "image", x: point.x - width / 2, y: point.y - height / 2, width, height, status: "saved", fileId: win.crypto.randomUUID() as any, customData: { source } }) as WebdrawElement;
-      this.imageCache.set(element.id, image); this.elements = [...this.elements, element]; this.selectedIds = new Set([element.id]); this.tool = "selection"; this.emitChange();
+      const fileId = win.crypto.randomUUID() as WebdrawBinaryFileData["id"];
+      const element = newImageElement({ type: "image", x: point.x - width / 2, y: point.y - height / 2, width, height, status: "saved", fileId }) as WebdrawElement;
+      this.files = { ...this.files, [fileId]: { id: fileId, dataURL: source, mimeType: file.type || "application/octet-stream", created: Date.now() } };
+      this.imageCache.set(fileId, { image, mimeType: file.type }); this.elements = [...this.elements, element]; this.selectedIds = new Set([element.id]); this.tool = "selection"; this.emitChange();
     };
     image.src = source; input.value = "";
   };
@@ -1606,11 +1711,15 @@ export class WebDraw extends LitElement {
     context.fillRect(0, 0, rect.width, rect.height);
     if (this.gridModeEnabled) this.paintGrid(context, rect.width, rect.height);
     context.save();
-    context.translate(this.pan.x, this.pan.y);
     context.scale(this.zoom, this.zoom);
     const roughCanvas = rough.canvas(canvas);
-    for (const element of this.elements) this.paintElement(context, roughCanvas, element as MutableElement);
-    if (includeSelection) this.paintSelection(context);
+    renderExcalidrawElements({ elements: this.elements, context, roughCanvas, imageCache: this.imageCache, theme: this.isDarkTheme() ? "dark" : "light", zoom: this.zoom, scrollX: this.pan.x / this.zoom, scrollY: this.pan.y / this.zoom, canvasBackgroundColor: this.canvasColor, selectedIds: this.selectedIds, editingTextId: this.editingText?.elementId });
+    if (includeSelection) {
+      context.save();
+      context.translate(this.pan.x / this.zoom, this.pan.y / this.zoom);
+      this.paintSelection(context);
+      context.restore();
+    }
     context.restore();
   }
 
@@ -1623,69 +1732,16 @@ export class WebDraw extends LitElement {
     context.stroke(); context.restore();
   }
 
-  private paintElement(context: CanvasRenderingContext2D, roughCanvas: ReturnType<typeof rough.canvas>, element: MutableElement, darkMode = this.isDarkTheme()) {
-    if (this.editingText?.elementId === element.id) return;
-    const stroke = darkMode && element.strokeColor === "#1b1b1f" ? "#e3e3e8" : element.strokeColor;
-    const options = { stroke, strokeWidth: element.strokeWidth, strokeLineDash: element.strokeStyle === "dashed" ? [8, 8] : element.strokeStyle === "dotted" ? [2, 5] : undefined, roughness: element.roughness, seed: element.seed, fill: element.backgroundColor === "transparent" ? undefined : element.backgroundColor, fillStyle: element.fillStyle };
-    context.save(); context.globalAlpha = (element.opacity ?? 100) / 100;
-    const box = this.bounds(element), centerX = box.x + box.width / 2, centerY = box.y + box.height / 2;
-    if (element.angle || element.customData?.webdrawFlipX || element.customData?.webdrawFlipY) {
-      context.translate(centerX, centerY);
-      if (element.angle) context.rotate(element.angle);
-      context.scale(element.customData?.webdrawFlipX ? -1 : 1, element.customData?.webdrawFlipY ? -1 : 1);
-      context.translate(-centerX, -centerY);
-    }
-    if (element.customData?.webdrawSticky) {
-      const radius = element.customData?.webdrawRound === false ? 3 : 12;
-      context.beginPath(); context.roundRect(element.x, element.y, element.width, element.height, radius);
-      context.fillStyle = element.backgroundColor; context.fill(); context.strokeStyle = stroke; context.lineWidth = Math.max(1, element.strokeWidth / 2); context.stroke();
-      const created = element.customData?.stickyCreated ?? element.created ?? Date.now();
-      const date = new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(created);
-      context.fillStyle = stroke; context.font = "14px Assistant, sans-serif"; context.textAlign = "right"; context.textBaseline = "alphabetic"; context.fillText(date, element.x + element.width - 16, element.y + element.height - 18); context.textAlign = "start";
-    } else if (element.type === "rectangle") roughCanvas.rectangle(element.x, element.y, element.width, element.height, options);
-    else if (element.type === "diamond") roughCanvas.polygon([[element.x + element.width / 2, element.y], [element.x + element.width, element.y + element.height / 2], [element.x + element.width / 2, element.y + element.height], [element.x, element.y + element.height / 2]], options);
-    else if (element.type === "ellipse") roughCanvas.ellipse(element.x + element.width / 2, element.y + element.height / 2, element.width, element.height, options);
-    else if (element.type === "frame") {
-      roughCanvas.rectangle(element.x, element.y, element.width, element.height, { ...options, fill: undefined, stroke: darkMode ? "#b8b8b8" : "#1b1b1f", roughness: 0, strokeWidth: 1 });
-      context.fillStyle = darkMode ? "#b8b8b8" : "#1b1b1f"; context.font = "14px Assistant, sans-serif"; context.fillText(element.name ?? "Frame", element.x, element.y - 8);
-    } else if (element.type === "embeddable") {
-      roughCanvas.rectangle(element.x, element.y, element.width, element.height, { ...options, roughness: 0 });
-      context.fillStyle = darkMode ? "#b8b8b8" : "#5c5c5c"; context.font = "14px Assistant, sans-serif"; context.textAlign = "center"; context.fillText(element.customData?.embedUrl || "Web Embed", element.x + element.width / 2, element.y + element.height / 2); context.textAlign = "start";
-    } else if (element.type === "image") {
-      const image = this.imageCache.get(element.id) ?? this.ensureImage(element);
-      if (image?.complete) {
-        const crop = element.customData?.crop;
-        crop ? context.drawImage(image, crop.x * image.naturalWidth, crop.y * image.naturalHeight, crop.width * image.naturalWidth, crop.height * image.naturalHeight, element.x, element.y, element.width, element.height) : context.drawImage(image, element.x, element.y, element.width, element.height);
-      }
-    }
-    else if (element.type === "line" || element.type === "arrow") {
-      let points = element.points.map(([x, y]: number[]) => [element.x + x, element.y + y] as [number, number]);
-      if (element.elbowed && points.length === 2) points = [points[0], [points[1][0], points[0][1]], points[1]];
-      element.roundness && points.length > 2 ? roughCanvas.curve(points, options) : roughCanvas.linearPath(points, options);
-      if (element.type === "arrow" && points.length > 1) {
-        if (element.startArrowhead) this.paintArrowhead(context, points[1], points[0], element, element.startArrowhead, stroke);
-        if (element.endArrowhead) this.paintArrowhead(context, points.at(-2)!, points.at(-1)!, element, element.endArrowhead, stroke);
-      }
-    } else if (element.type === "freedraw") {
-      const points = element.points.map(([x, y]: number[]) => [element.x + x, element.y + y]);
-      const outline = getStroke(points, { size: element.strokeWidth * 4, thinning: .6, smoothing: .5, streamline: .5, simulatePressure: element.simulatePressure });
-      if (outline.length) { context.beginPath(); context.moveTo(outline[0][0], outline[0][1]); for (const [x, y] of outline.slice(1)) context.lineTo(x, y); context.closePath(); context.fillStyle = stroke; context.fill(); }
-    } else if (element.type === "text") {
-      context.fillStyle = stroke; context.font = `${element.fontSize}px ${this.fontName(element.fontFamily)}`; context.textBaseline = "top"; context.textAlign = (element.textAlign ?? "left") as CanvasTextAlign;
-      const x = element.textAlign === "center" ? element.x + element.width / 2 : element.textAlign === "right" ? element.x + element.width : element.x;
-      String(element.text).split("\n").forEach((line, index) => context.fillText(line, x, element.y + index * element.fontSize * (element.lineHeight ?? 1.25)));
-    }
-    context.restore();
-  }
-
-  private ensureImage(element: MutableElement) {
-    const source = element.customData?.source;
-    if (!source || this.imageCache.has(element.id)) return this.imageCache.get(element.id);
+  private loadSceneImages() {
+    this.imageCache.clear();
     const ImageClass = this.ownerDocument.defaultView?.Image;
     if (!ImageClass) return;
-    const image = new ImageClass(); image.onload = () => this.paint(); image.src = source;
-    this.imageCache.set(element.id, image);
-    return image;
+    for (const file of Object.values(this.files)) {
+      const image = new ImageClass();
+      image.onload = () => this.paint();
+      image.src = file.dataURL;
+      this.imageCache.set(file.id, { image, mimeType: file.mimeType });
+    }
   }
 
   private getEmbedUrl(element: MutableElement) {
@@ -1709,35 +1765,35 @@ export class WebDraw extends LitElement {
     return "Excalifont, Virgil, sans-serif";
   }
 
-  private paintArrowhead(context: CanvasRenderingContext2D, from: [number, number], to: [number, number], element: MutableElement, type: Arrowhead, stroke = element.strokeColor) {
-    const angle = Math.atan2(to[1] - from[1], to[0] - from[0]), size = 14 + element.strokeWidth * 2;
-    const left: [number, number] = [to[0] - Math.cos(angle - Math.PI / 6) * size, to[1] - Math.sin(angle - Math.PI / 6) * size];
-    const right: [number, number] = [to[0] - Math.cos(angle + Math.PI / 6) * size, to[1] - Math.sin(angle + Math.PI / 6) * size];
-    context.save(); context.strokeStyle = stroke; context.fillStyle = stroke; context.lineWidth = element.strokeWidth; context.lineCap = "round"; context.beginPath();
-    if (type === "circle") { context.arc(to[0], to[1], size / 3, 0, Math.PI * 2); context.fill(); }
-    else if (type === "diamond") { const back = [to[0] - Math.cos(angle) * size, to[1] - Math.sin(angle) * size]; context.moveTo(to[0], to[1]); context.lineTo(...left); context.lineTo(back[0], back[1]); context.lineTo(...right); context.closePath(); context.fill(); }
-    else if (type === "bar") { const half = size / 2; context.moveTo(to[0] + Math.cos(angle + Math.PI / 2) * half, to[1] + Math.sin(angle + Math.PI / 2) * half); context.lineTo(to[0] - Math.cos(angle + Math.PI / 2) * half, to[1] - Math.sin(angle + Math.PI / 2) * half); context.stroke(); }
-    else { context.moveTo(...left); context.lineTo(to[0], to[1]); context.lineTo(...right); type === "triangle" ? (context.closePath(), context.fill()) : context.stroke(); }
-    context.restore();
-  }
-
   private paintSelection(context: CanvasRenderingContext2D) {
     context.save(); context.strokeStyle = "#6965db"; context.lineWidth = 1 / this.zoom; context.setLineDash([]);
-    for (const item of this.elements.filter((element) => this.selectedIds.has(element.id))) {
-      const box = this.bounds(item as MutableElement), gap = 4 / this.zoom;
-      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      context.save(); context.translate(center.x, center.y); context.rotate((item as MutableElement).angle ?? 0); context.translate(-center.x, -center.y);
+    const selected = this.elements.filter((element) => this.selectedIds.has(element.id));
+    for (const item of selected) {
+      const box = elementAbsoluteBox(item, this.elements), gap = 4 / this.zoom;
+      context.save(); context.translate(box.cx, box.cy); context.rotate(item.angle); context.translate(-box.cx, -box.cy);
       context.strokeRect(box.x - gap, box.y - gap, box.width + gap * 2, box.height + gap * 2);
-      if (item.id === this.editingLinearId && (item as MutableElement).points) {
-        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
-        for (const [x, y] of (item as MutableElement).points) { context.beginPath(); context.arc(item.x + x, item.y + y, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke(); }
-      } else if (this.selectedIds.size === 1 && !(item as MutableElement).locked) {
-        const handles = [[box.x - gap, box.y - gap], [center.x, box.y - gap], [box.x + box.width + gap, box.y - gap], [box.x + box.width + gap, center.y], [box.x + box.width + gap, box.y + box.height + gap], [center.x, box.y + box.height + gap], [box.x - gap, box.y + box.height + gap], [box.x - gap, center.y]];
-        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
-        for (const [x, y] of handles) { context.fillRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); context.strokeRect(x - 4 / this.zoom, y - 4 / this.zoom, 8 / this.zoom, 8 / this.zoom); }
-        const rotateY = box.y - gap - 24 / this.zoom; context.beginPath(); context.moveTo(center.x, box.y - gap); context.lineTo(center.x, rotateY); context.stroke(); context.beginPath(); context.arc(center.x, rotateY, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke();
-      }
       context.restore();
+      if (item.id === this.editingLinearId && (item.type === "line" || item.type === "arrow")) {
+        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
+        for (const [x, y] of linearPoints(item, this.elements)) { context.beginPath(); context.arc(x, y, 5 / this.zoom, 0, Math.PI * 2); context.fill(); context.stroke(); }
+      } else if (this.selectedIds.size === 1 && !(item as MutableElement).locked) {
+        context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
+        for (const bounds of Object.values(elementTransformHandles(item, this.elements, this.zoom))) {
+          if (!bounds) continue;
+          const [x1, y1, x2, y2] = bounds;
+          context.fillRect(x1, y1, x2 - x1, y2 - y1); context.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        }
+      }
+    }
+    if (selected.length > 1) {
+      const box = commonBounds(selected);
+      context.strokeRect(box.x, box.y, box.width, box.height);
+      context.fillStyle = this.isDarkTheme() ? "#1e1e1e" : "#ffffff";
+      for (const bounds of Object.values(selectionTransformHandles(selected, this.elements, this.zoom))) {
+        if (!bounds) continue;
+        const [x1, y1, x2, y2] = bounds;
+        context.fillRect(x1, y1, x2 - x1, y2 - y1); context.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      }
     }
     if (this.selectionRect) { const box = normalizeBounds(this.selectionRect.start, this.selectionRect.end); context.fillStyle = "rgba(105,101,219,.08)"; context.fillRect(box.x, box.y, box.width, box.height); context.setLineDash([4 / this.zoom, 4 / this.zoom]); context.strokeRect(box.x, box.y, box.width, box.height); }
     context.restore();
