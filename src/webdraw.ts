@@ -19,7 +19,7 @@ import {
   normalizeStickyNote,
 } from "@excalidraw/element";
 import { icon, sloppinessIcon } from "./icons";
-import { SHORTCUT_GROUPS } from "./shortcuts";
+import { SHORTCUT_GROUPS, shortcutFor } from "./shortcuts";
 import {
   elementBounds,
   elementAbsoluteBox,
@@ -524,7 +524,7 @@ export class WebDraw extends LitElement {
         </div>`;
     }
     if (this.dialog === "commands") {
-      const run = (action: () => void) => { action(); this.dialog = null; this.searchQuery = ""; };
+      const run = (action: () => void) => { this.dialog = null; this.searchQuery = ""; action(); };
       const commands = [
         ["Export image", () => this.dialog = "export"], ["Find on canvas", () => this.dialog = "search"],
         ["Toggle grid", () => this.gridModeEnabled = !this.gridModeEnabled], ["Toggle zen mode", () => this.zenModeEnabled = !this.zenModeEnabled],
@@ -535,7 +535,10 @@ export class WebDraw extends LitElement {
       return html`<div class="command-menu Island" role="dialog" aria-label="Command palette">
         ${icon("search")}<input type="search" placeholder="Search commands..." .value=${this.searchQuery} @input=${(event: InputEvent) => this.searchQuery = (event.target as HTMLInputElement).value} @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") this.dialog = null; }}>
         <button class="command-close" aria-label="Close" @click=${close}>${icon("close")}</button>
-        <div class="command-results">${commands.filter(([label]) => label.toLowerCase().includes(query)).map(([label, action]) => html`<button @click=${() => run(action)}>${label}</button>`)}</div>
+        <div class="command-results">${commands.filter(([label]) => label.toLowerCase().includes(query)).map(([label, action]) => {
+          const shortcut = shortcutFor(label === "Toggle zen mode" ? "Zen mode" : label);
+          return html`<button @click=${() => run(action)}><span>${label}</span>${shortcut ? html`<kbd>${shortcut}</kbd>` : nothing}</button>`;
+        })}</div>
       </div>`;
     }
     return html`

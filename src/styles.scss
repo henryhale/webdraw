@@ -368,9 +368,8 @@ web-draw {
   .dropdown-menu__item {
     display: grid;
     grid-template-columns: 1.5rem minmax(0, 1fr) auto;
-    min-height: 3.25rem;
     gap: .75rem;
-    padding: .5rem .75rem;
+    padding: 0 .5rem;
     font-size: 1rem;
     font-weight: 400;
   }
@@ -413,11 +412,12 @@ web-draw {
     background: var(--color-surface-low);
 
     button {
-      display: grid;
+      display: flex;
       width: 2.5rem;
       min-height: 2.5rem;
+      align-items: center;
+      justify-content: center;
       padding: 0;
-      place-items: center;
       border-radius: .55rem;
     }
 
@@ -800,7 +800,8 @@ kbd {
   > input { height: 2rem; border: 0; color: inherit; background: transparent; }
   .command-close { display: grid; width: 2rem; height: 2rem; padding: 0; place-items: center; border: 0; border-radius: .375rem; background: transparent; }
   .command-results { grid-column: 1 / -1; display: grid; max-height: 20rem; overflow: auto; border-top: 1px solid var(--default-border-color); }
-  .command-results button { min-height: 2.4rem; padding: 0 .5rem; border: 0; border-radius: .375rem; color: inherit; background: transparent; text-align: left; }
+  .command-results button { display: flex; min-height: 2.4rem; align-items: center; justify-content: space-between; gap: .5rem; padding: 0 .5rem; border: 0; border-radius: .375rem; color: inherit; background: transparent; text-align: left; }
+  .command-results kbd { color: var(--keybinding-color); font-size: .75rem; white-space: nowrap; }
   .command-results button:hover, .command-close:hover { background: var(--button-hover-bg); }
 }
 

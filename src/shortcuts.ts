@@ -60,6 +60,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { label: "Canvas & Shape properties", bindings: [["Alt", "/"]] },
       { label: "Find on canvas", bindings: [["Ctrl", "F"]] },
       { label: "Command palette", bindings: [["Ctrl", "/"]] },
+      { label: "Export image", bindings: [["Ctrl", "Shift", "E"]] },
       { label: "Keyboard shortcuts", bindings: [["?"]] },
     ],
   },
@@ -106,3 +107,9 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     ],
   },
 ];
+
+export const shortcutFor = (label: string) =>
+  SHORTCUT_GROUPS.flatMap((group) => group.items)
+    .find((item) => item.label === label)?.bindings[0].join("+") ?? "";
+
+if (import.meta.env.DEV) console.assert(shortcutFor("Export image") === "Ctrl+Shift+E");
