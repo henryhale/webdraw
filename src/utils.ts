@@ -20,8 +20,9 @@ export const encodeSceneMetadata = (scene: string) => {
 };
 
 export const cursorForHandle = (handle: ResizeHandle, angle = 0) => {
-  const direction = { e: 0, w: 0, se: 1, nw: 1, s: 2, n: 2, sw: 3, ne: 3 }[handle];
-  return ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"][((direction + Math.round(angle / (Math.PI / 4))) % 4 + 4) % 4];
+  const directions: ResizeHandle[] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
+  const index = ((directions.indexOf(handle) + Math.round(angle / (Math.PI / 4))) % 8 + 8) % 8;
+  return `${directions[index]}-resize`;
 };
 
 if (import.meta.env.DEV) {
@@ -30,5 +31,5 @@ if (import.meta.env.DEV) {
   const rotated = rotatePoint({ x: 1, y: 0 }, { x: 0, y: 0 }, Math.PI / 2);
   console.assert(Math.abs(rotated.x) < 1e-10 && Math.abs(rotated.y - 1) < 1e-10);
   console.assert(JSON.parse(encodeSceneMetadata("✓")).encoded.length === 3);
-  console.assert(cursorForHandle("e") === "ew-resize" && cursorForHandle("e", Math.PI / 2) === "ns-resize");
+  console.assert(cursorForHandle("n") === "n-resize" && cursorForHandle("w") === "w-resize" && cursorForHandle("n", Math.PI / 2) === "e-resize");
 }

@@ -44,7 +44,6 @@ import {
   getSelectedElements,
   getContainerElement,
   getTextElementAngle,
-  OMIT_SIDES_FOR_MULTIPLE_ELEMENTS,
   resizeMultipleElements,
   bindOrUnbindBindingElements,
   bindOrUnbindBindingElement,
@@ -91,6 +90,7 @@ export const hitElements = (
   point: Point,
   elements: readonly NonDeletedExcalidrawElement[],
   threshold: number,
+  includeShapeInside = false,
 ) => {
   const map = elementsMap(elements);
   const globalPoint = pointFrom<GlobalPoint>(point.x, point.y);
@@ -102,6 +102,8 @@ export const hitElements = (
         element,
         threshold,
         elementsMap: map,
+        overrideShouldTestInside: includeShapeInside &&
+          (element.type === "rectangle" || element.type === "diamond" || element.type === "ellipse" || element.type === "stickynote"),
       }),
     );
 };
@@ -133,7 +135,7 @@ export const selectionTransformHandles = (
 ) => {
   if (!selected.length) return {};
   return selected.length === 1
-    ? getTransformHandles(selected[0], { value: zoom } as never, elementsMap(elements), "mouse")
+    ? getTransformHandles(selected[0], { value: zoom } as never, elementsMap(elements), "mouse", {})
     : (() => {
         const box = getCommonBoundingBox(selected);
         return getTransformHandlesFromCoords(
@@ -141,7 +143,7 @@ export const selectionTransformHandles = (
           0 as never,
           { value: zoom } as never,
           "mouse",
-          OMIT_SIDES_FOR_MULTIPLE_ELEMENTS,
+          {},
         );
       })();
 };
@@ -178,6 +180,7 @@ export const elementTransformHandles = (
     { value: zoom } as never,
     elementsMap(elements),
     "mouse",
+    {},
   );
 
 export const elementAbsoluteBox = (
@@ -1017,11 +1020,20 @@ if (import.meta.env.DEV) {
     selectElementsWithinExcalidraw({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 } }, [rectangle]).has(rectangle.id),
   );
   const sizeable = newElement({ type: "rectangle", x: 10, y: 20, width: 100, height: 80 });
-  const northwest = selectionTransformHandles([sizeable], [sizeable], 1).nw;
+  console.assert(hitElements({ x: 60, y: 60 }, [sizeable], 0, true)[0]?.id === sizeable.id);
+  const handles = selectionTransformHandles([sizeable], [sizeable], 1);
+  const northwest = handles.nw;
   console.assert(
     northwest && selectionTransformHandleAt(
       { x: northwest[0] + northwest[2] / 2, y: northwest[1] + northwest[3] / 2 },
       [sizeable], [sizeable], 1,
     ) === "nw",
   );
+  const north = handles.n;
+  console.assert(north && selectionTransformHandleAt(
+    { x: north[0] + north[2] / 2, y: north[1] + north[3] / 2 },
+    [sizeable], [sizeable], 1,
+  ) === "n");
+  const second = newElement({ type: "rectangle", x: 180, y: 20, width: 100, height: 80 });
+  console.assert(!!selectionTransformHandles([sizeable, second], [sizeable, second], 1).n);
 }

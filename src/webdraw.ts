@@ -702,7 +702,7 @@ export class WebDraw extends LitElement {
           handle: transform === "rotate" ? undefined : transform,
           originalElements: new Map(this.elements.map((item) => [item.id, structuredClone(item)])),
         };
-        this.canvas!.style.cursor = transform === "rotate" ? "grabbing" : cursorForHandle(transform, element.angle);
+        this.canvas!.style.cursor = transform === "rotate" ? "grabbing" : cursorForHandle(transform, this.selectedIds.size === 1 ? element.angle : 0);
         return;
       }
       const hits = this.hitTestAll(point);
@@ -728,6 +728,7 @@ export class WebDraw extends LitElement {
           mode: "move", start: point, last: point,
           originalElements: new Map(this.elements.map((element) => [element.id, structuredClone(element)])),
         };
+        this.canvas!.style.cursor = "move";
         this.syncStyleFromElement(hit as MutableElement);
       } else {
         if (!event.shiftKey) this.selectedIds = new Set();
@@ -770,9 +771,7 @@ export class WebDraw extends LitElement {
           this.paint(); return;
         }
       }
-      const handle = this.tool === "selection" ? this.selectionHandleAt(this.scenePoint(event)) : null;
-      const selected = handle && handle !== "rotate" ? this.elements.find((item) => this.selectedIds.has(item.id)) as MutableElement | undefined : undefined;
-      this.canvas!.style.cursor = handle === "rotate" ? "grab" : handle ? cursorForHandle(handle, selected?.angle) : "";
+      this.canvas!.style.cursor = this.cursorAt(this.scenePoint(event));
       return;
     }
     if (this.drag.mode === "pan") {
@@ -896,7 +895,7 @@ export class WebDraw extends LitElement {
     }
     this.drag = null;
     this.selectionRect = null;
-    if (this.canvas) this.canvas.style.cursor = "";
+    if (this.canvas) this.canvas.style.cursor = event && event.type !== "pointercancel" ? this.cursorAt(this.scenePoint(event)) : "";
     if (changed) this.emitChange();
     this.requestUpdate();
   };
@@ -1126,7 +1125,19 @@ export class WebDraw extends LitElement {
   }
 
   private hitTestAll(point: Point) {
-    return hitElements(point, this.elements, 8 / this.zoom);
+    return hitElements(point, this.elements, 8 / this.zoom, true);
+  }
+
+  private cursorAt(point: Point) {
+    if (this.tool !== "selection") return "";
+    const handle = this.selectionHandleAt(point);
+    if (handle === "rotate") return "grab";
+    if (handle) {
+      const selected = this.selectedIds.size === 1 ? this.elements.find((element) => this.selectedIds.has(element.id)) : undefined;
+      return cursorForHandle(handle, selected?.angle);
+    }
+    const hit = this.hitTest(point);
+    return hit && !hit.locked ? "move" : "";
   }
 
   private selectWithin(rect: { start: Point; end: Point }) {
