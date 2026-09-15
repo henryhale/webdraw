@@ -94,18 +94,20 @@ export const hitElements = (
 ) => {
   const map = elementsMap(elements);
   const globalPoint = pointFrom<GlobalPoint>(point.x, point.y);
-  return [...elements]
-    .reverse()
-    .filter((element) =>
-      hitElementItself({
-        point: globalPoint,
-        element,
-        threshold,
-        elementsMap: map,
-        overrideShouldTestInside: includeShapeInside &&
-          (element.type === "rectangle" || element.type === "diamond" || element.type === "ellipse" || element.type === "stickynote"),
-      }),
-    );
+  return [...elements].reverse().filter((element) =>
+    hitElementItself({
+      point: globalPoint,
+      element,
+      threshold,
+      elementsMap: map,
+      overrideShouldTestInside:
+        includeShapeInside &&
+        (element.type === "rectangle" ||
+          element.type === "diamond" ||
+          element.type === "ellipse" ||
+          element.type === "stickynote"),
+    }),
+  );
 };
 
 export const selectElementsWithinExcalidraw = (
@@ -119,11 +121,17 @@ export const selectElementsWithinExcalidraw = (
     width: rect.end.x - rect.start.x,
     height: rect.end.y - rect.start.y,
   });
-  const selected = getElementsWithinSelection(elements, selection, elementsMap(elements));
+  const selected = getElementsWithinSelection(
+    elements,
+    selection,
+    elementsMap(elements),
+  );
   const ids = new Set(selected.map((element) => element.id));
   for (const element of selected) {
     const groupId = element.groupIds.at(-1);
-    if (groupId) for (const member of getElementsInGroup(elements, groupId)) ids.add(member.id);
+    if (groupId)
+      for (const member of getElementsInGroup(elements, groupId))
+        ids.add(member.id);
   }
   return ids;
 };
@@ -135,7 +143,13 @@ export const selectionTransformHandles = (
 ) => {
   if (!selected.length) return {};
   return selected.length === 1
-    ? getTransformHandles(selected[0], { value: zoom } as never, elementsMap(elements), "mouse", {})
+    ? getTransformHandles(
+        selected[0],
+        { value: zoom } as never,
+        elementsMap(elements),
+        "mouse",
+        {},
+      )
     : (() => {
         const box = getCommonBoundingBox(selected);
         return getTransformHandlesFromCoords(
@@ -158,14 +172,21 @@ export const selectionTransformHandleAt = (
   for (const [name, bounds] of Object.entries(handles)) {
     if (!bounds) continue;
     const [x, y, width, height] = bounds;
-    if (point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height) {
+    if (
+      point.x >= x &&
+      point.x <= x + width &&
+      point.y >= y &&
+      point.y <= y + height
+    ) {
       return name === "rotation" ? "rotate" : (name as ResizeHandle);
     }
   }
   return null;
 };
 
-export const commonBounds = (elements: readonly NonDeletedExcalidrawElement[]) => {
+export const commonBounds = (
+  elements: readonly NonDeletedExcalidrawElement[],
+) => {
   const box = getCommonBoundingBox(elements);
   return { x: box.minX, y: box.minY, width: box.width, height: box.height };
 };
@@ -239,7 +260,8 @@ export const appendLinearPointWithExcalidraw = (
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   const element = scene.getNonDeletedElementsMap().get(elementId);
-  if (!element || (element.type !== "line" && element.type !== "arrow")) return [...scene.getNonDeletedElements()];
+  if (!element || (element.type !== "line" && element.type !== "arrow"))
+    return [...scene.getNonDeletedElements()];
   const local = LinearElementEditor.pointFromAbsoluteCoords(
     element,
     pointFrom(point.x, point.y),
@@ -255,13 +277,26 @@ export const finishLinearWithExcalidraw = (
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   const element = scene.getNonDeletedElementsMap().get(elementId);
-  if (!element || (element.type !== "line" && element.type !== "arrow")) return [...scene.getNonDeletedElements()];
+  if (!element || (element.type !== "line" && element.type !== "arrow"))
+    return [...scene.getNonDeletedElements()];
   LinearElementEditor.deletePoints(
     element,
-    { scene, state: { selectedLinearElement: { isEditing: true, lastUncommittedPoint: element.points.at(-1) } } } as never,
+    {
+      scene,
+      state: {
+        selectedLinearElement: {
+          isEditing: true,
+          lastUncommittedPoint: element.points.at(-1),
+        },
+      },
+    } as never,
     [element.points.length - 1],
   );
-  return scene.getNonDeletedElements().filter((candidate) => candidate.id !== elementId || element.points.length > 1) as NonDeletedExcalidrawElement[];
+  return scene
+    .getNonDeletedElements()
+    .filter(
+      (candidate) => candidate.id !== elementId || element.points.length > 1,
+    ) as NonDeletedExcalidrawElement[];
 };
 
 export const extendFreeDrawWithExcalidraw = (
@@ -272,7 +307,12 @@ export const extendFreeDrawWithExcalidraw = (
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   const element = scene.getNonDeletedElementsMap().get(elementId);
   if (element?.type === "freedraw") {
-    scene.mutateElement(element, { points: [...element.points, pointFrom<LocalPoint>(point.x - element.x, point.y - element.y)] });
+    scene.mutateElement(element, {
+      points: [
+        ...element.points,
+        pointFrom<LocalPoint>(point.x - element.x, point.y - element.y),
+      ],
+    });
   }
   return [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
 };
@@ -280,7 +320,11 @@ export const extendFreeDrawWithExcalidraw = (
 export const linearPoints = (
   element: Extract<NonDeletedExcalidrawElement, { type: "line" | "arrow" }>,
   elements: readonly NonDeletedExcalidrawElement[],
-) => LinearElementEditor.getPointsGlobalCoordinates(element, elementsMap(elements));
+) =>
+  LinearElementEditor.getPointsGlobalCoordinates(
+    element,
+    elementsMap(elements),
+  );
 
 export const textElementAngle = (
   element: Extract<NonDeletedExcalidrawElement, { type: "text" }>,
@@ -349,18 +393,41 @@ export const renderExcalidrawElements = ({
     if (element.type === "text" && element.containerId) continue;
     if (element.id === editingTextId) continue;
     context.save();
-    const frame = !isExporting && element.frameId ? getContainingFrame(element, map) : null;
+    const frame =
+      !isExporting && element.frameId ? getContainingFrame(element, map) : null;
     if (frame) {
       context.translate(frame.x + scrollX, frame.y + scrollY);
       context.beginPath();
-      context.roundRect(0, 0, frame.width, frame.height, FRAME_STYLE.radius / zoom);
+      context.roundRect(
+        0,
+        0,
+        frame.width,
+        frame.height,
+        FRAME_STYLE.radius / zoom,
+      );
       context.clip();
       context.translate(-(frame.x + scrollX), -(frame.y + scrollY));
     }
-    renderElement(element, map as never, map, roughCanvas, context, renderConfig, appState);
+    renderElement(
+      element,
+      map as never,
+      map,
+      roughCanvas,
+      context,
+      renderConfig,
+      appState,
+    );
     const label = getBoundTextElement(element, map);
     if (label && label.id !== editingTextId) {
-      renderElement(label, map as never, map, roughCanvas, context, renderConfig, appState);
+      renderElement(
+        label,
+        map as never,
+        map,
+        roughCanvas,
+        context,
+        renderConfig,
+        appState,
+      );
     }
     context.restore();
   }
@@ -383,10 +450,16 @@ export const transformElementsWithExcalidraw = ({
   maintainAspectRatio: boolean;
   resizeFromCenter: boolean;
 }) => {
-  const nextElements = structuredClone(elements) as NonDeletedExcalidrawElement[];
+  const nextElements = structuredClone(
+    elements,
+  ) as NonDeletedExcalidrawElement[];
   const scene = new Scene(nextElements, { skipValidation: true });
-  const selected = scene.getNonDeletedElements().filter((element) => selectedIds.has(element.id));
-  const box = getCommonBoundingBox([...originals.values()].filter((element) => selectedIds.has(element.id)));
+  const selected = scene
+    .getNonDeletedElements()
+    .filter((element) => selectedIds.has(element.id));
+  const box = getCommonBoundingBox(
+    [...originals.values()].filter((element) => selectedIds.has(element.id)),
+  );
   transformElements(
     originals,
     handle === "rotate" ? "rotation" : handle,
@@ -458,7 +531,9 @@ export const commitTextWithExcalidraw = ({
 }) => {
   let next = structuredClone(elements) as NonDeletedExcalidrawElement[];
   let textElement = elementId
-    ? next.find((element) => element.id === elementId && element.type === "text")
+    ? next.find(
+        (element) => element.id === elementId && element.type === "text",
+      )
     : undefined;
 
   if (!textElement) {
@@ -495,7 +570,7 @@ export const commitTextWithExcalidraw = ({
   const liveText = scene.getNonDeletedElementsMap().get(textElement.id);
   if (!liveText || liveText.type !== "text") return next;
   const container = containerId
-    ? scene.getNonDeletedElementsMap().get(containerId) ?? null
+    ? (scene.getNonDeletedElementsMap().get(containerId) ?? null)
     : null;
   scene.mutateElement(liveText, {
     text,
@@ -545,7 +620,7 @@ export const updateTextStylesWithExcalidraw = (
     if (!text || text.type !== "text") continue;
     scene.mutateElement(text, patch as never);
     const container = text.containerId
-      ? scene.getNonDeletedElementsMap().get(text.containerId) ?? null
+      ? (scene.getNonDeletedElementsMap().get(text.containerId) ?? null)
       : null;
     redrawTextBoundingBox(text, container, scene);
   }
@@ -572,7 +647,9 @@ export const createFlowchartNodeWithExcalidraw = (
     skipValidation: true,
   });
   return {
-    elements: [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[],
+    elements: [
+      ...scene.getNonDeletedElements(),
+    ] as NonDeletedExcalidrawElement[],
     nodeId: nodes.find((element) => element.type !== "arrow")?.id,
   };
 };
@@ -646,7 +723,8 @@ export const addChildrenToNewFrameWithExcalidraw = (
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   const frame = scene.getNonDeletedElementsMap().get(frameId);
-  if (!frame || frame.type !== "frame") return [...scene.getNonDeletedElements()];
+  if (!frame || frame.type !== "frame")
+    return [...scene.getNonDeletedElements()];
   const children = getElementsInNewFrame(
     scene.getElementsIncludingDeleted(),
     frame,
@@ -666,8 +744,12 @@ export const reconcileFrameMembershipWithExcalidraw = (
   mode: "move" | "resize",
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
-  let next = [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
-  const selectedElementIds = Object.fromEntries([...ids].map((id) => [id, true as const])) as Record<string, true>;
+  let next = [
+    ...scene.getNonDeletedElements(),
+  ] as NonDeletedExcalidrawElement[];
+  const selectedElementIds = Object.fromEntries(
+    [...ids].map((id) => [id, true as const]),
+  ) as Record<string, true>;
   const selected = scene.getSelectedElements({ selectedElementIds });
   const map = scene.getNonDeletedElementsMap();
   const framesUnderCursor = getFrameLikeElements(next).filter(
@@ -675,14 +757,20 @@ export const reconcileFrameMembershipWithExcalidraw = (
   );
   let topFrame = framesUnderCursor.at(-1) ?? null;
   if (topFrame) {
-    const hit = hitElements(point, next, 0).find((element) => !ids.has(element.id));
+    const hit = hitElements(point, next, 0).find(
+      (element) => !ids.has(element.id),
+    );
     if (hit && hit.type !== "frame") {
       const hitIndex = next.findIndex((element) => element.id === hit.id);
-      const frameIndex = next.findIndex((element) => element.id === topFrame!.id);
+      const frameIndex = next.findIndex(
+        (element) => element.id === topFrame!.id,
+      );
       if (hitIndex > frameIndex) {
         const currentFrameId = getCommonFrameId(selected);
-        topFrame = framesUnderCursor.find((frame) => frame.id === currentFrameId) ??
-          framesUnderCursor.find((frame) => frame.id === hit.frameId) ?? null;
+        topFrame =
+          framesUnderCursor.find((frame) => frame.id === currentFrameId) ??
+          framesUnderCursor.find((frame) => frame.id === hit.frameId) ??
+          null;
       }
     }
   }
@@ -692,10 +780,18 @@ export const reconcileFrameMembershipWithExcalidraw = (
     frameToHighlight: topFrame,
   } as never;
   if (mode === "move" && topFrame && !ids.has(topFrame.id)) {
-    const toAdd = selected.filter((element) => isElementInFrame(element, map, state, { targetFrame: topFrame! }));
-    next = addElementsToFrame(next, toAdd, topFrame) as NonDeletedExcalidrawElement[];
+    const toAdd = selected.filter((element) =>
+      isElementInFrame(element, map, state, { targetFrame: topFrame! }),
+    );
+    next = addElementsToFrame(
+      next,
+      toAdd,
+      topFrame,
+    ) as NonDeletedExcalidrawElement[];
   }
-  next = updateFrameMembershipOfSelectedElements(next, state, { scene } as never) as NonDeletedExcalidrawElement[];
+  next = updateFrameMembershipOfSelectedElements(next, state, {
+    scene,
+  } as never) as NonDeletedExcalidrawElement[];
   if (mode === "resize") {
     for (const frame of selected.filter(isFrameLikeElement)) {
       next = replaceAllElementsInFrame(
@@ -713,7 +809,9 @@ export const duplicateElementsWithExcalidraw = (
   ids: ReadonlySet<string>,
 ) => {
   const selected = new Map(
-    elements.filter((element) => ids.has(element.id)).map((element) => [element.id, element]),
+    elements
+      .filter((element) => ids.has(element.id))
+      .map((element) => [element.id, element]),
   );
   const result = duplicateElements({
     type: "in-place",
@@ -771,7 +869,11 @@ export const groupElementsWithExcalidraw = (
   ids: ReadonlySet<string>,
   groupId: string,
 ) => {
-  const selected = getRootElements(getSelectedElements(elements, selectionAppState(ids) as never, { includeBoundTextElement: true }));
+  const selected = getRootElements(
+    getSelectedElements(elements, selectionAppState(ids) as never, {
+      includeBoundTextElement: true,
+    }),
+  );
   if (selected.length < 2) return [...elements];
   const selectedIds = new Set(selected.map((element) => element.id));
   const frameIds = new Set(selected.map((element) => element.frameId));
@@ -784,12 +886,21 @@ export const groupElementsWithExcalidraw = (
     );
   }
   for (const element of scene.getNonDeletedElements()) {
-    if (selectedIds.has(element.id)) scene.mutateElement(element, { groupIds: addToGroup(element.groupIds, groupId, null) });
+    if (selectedIds.has(element.id))
+      scene.mutateElement(element, {
+        groupIds: addToGroup(element.groupIds, groupId, null),
+      });
   }
   const grouped = next.filter((element) => element.groupIds.includes(groupId));
   const lastIndex = next.lastIndexOf(grouped.at(-1)!);
   const reordered = syncMovedIndices(
-    [...next.slice(0, lastIndex).filter((element) => !selectedIds.has(element.id)), ...grouped, ...next.slice(lastIndex + 1)],
+    [
+      ...next
+        .slice(0, lastIndex)
+        .filter((element) => !selectedIds.has(element.id)),
+      ...grouped,
+      ...next.slice(lastIndex + 1),
+    ],
     arrayToMap(grouped),
   );
   return reordered as NonDeletedExcalidrawElement[];
@@ -800,12 +911,20 @@ export const ungroupElementsWithExcalidraw = (
   ids: ReadonlySet<string>,
 ) => {
   const selectedGroupIds = Object.fromEntries(
-    elements.filter((element) => ids.has(element.id)).flatMap((element) => element.groupIds.at(-1) ? [[element.groupIds.at(-1)!, true]] : []),
+    elements
+      .filter((element) => ids.has(element.id))
+      .flatMap((element) =>
+        element.groupIds.at(-1) ? [[element.groupIds.at(-1)!, true]] : [],
+      ),
   );
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   for (const element of scene.getNonDeletedElements()) {
-    const groupIds = removeFromSelectedGroups(element.groupIds, selectedGroupIds);
-    if (groupIds.length !== element.groupIds.length) scene.mutateElement(element, { groupIds });
+    const groupIds = removeFromSelectedGroups(
+      element.groupIds,
+      selectedGroupIds,
+    );
+    if (groupIds.length !== element.groupIds.length)
+      scene.mutateElement(element, { groupIds });
   }
   return [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
 };
@@ -822,7 +941,9 @@ export const alignElementsWithExcalidraw = (
   alignment: { axis: "x" | "y"; position: "start" | "center" | "end" },
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
-  const selected = scene.getNonDeletedElements().filter((element) => ids.has(element.id));
+  const selected = scene
+    .getNonDeletedElements()
+    .filter((element) => ids.has(element.id));
   alignElements(selected, alignment, scene, selectionAppState(ids) as never);
   return [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
 };
@@ -867,24 +988,47 @@ export const flipElementsWithExcalidraw = (
     includeBoundTextElement: true,
     includeElementsInFrames: true,
   });
-  if (selected.every((element) => isArrowElement(element) && (element.startBinding || element.endBinding))) {
+  if (
+    selected.every(
+      (element) =>
+        isArrowElement(element) && (element.startBinding || element.endBinding),
+    )
+  ) {
     for (const element of selected) {
-      if (isArrowElement(element)) scene.mutateElement(element, { startArrowhead: element.endArrowhead, endArrowhead: element.startArrowhead });
+      if (isArrowElement(element))
+        scene.mutateElement(element, {
+          startArrowhead: element.endArrowhead,
+          endArrowhead: element.startArrowhead,
+        });
     }
     return [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
   }
   const before = getCommonBoundingBox(selected);
-  const originals = new Map(scene.getNonDeletedElements().map((element) => [element.id, structuredClone(element)]));
-  resizeMultipleElements(selected, scene.getNonDeletedElementsMap(), "nw", scene, originals, {
-    flipByX: direction === "horizontal",
-    flipByY: direction === "vertical",
-    shouldResizeFromCenter: true,
-    shouldMaintainAspectRatio: true,
-  });
+  const originals = new Map(
+    scene
+      .getNonDeletedElements()
+      .map((element) => [element.id, structuredClone(element)]),
+  );
+  resizeMultipleElements(
+    selected,
+    scene.getNonDeletedElementsMap(),
+    "nw",
+    scene,
+    originals,
+    {
+      flipByX: direction === "horizontal",
+      flipByY: direction === "vertical",
+      shouldResizeFromCenter: true,
+      shouldMaintainAspectRatio: true,
+    },
+  );
   bindOrUnbindBindingElements(selected.filter(isArrowElement), scene, state);
   const after = getCommonBoundingBox(selected);
   for (const element of selected) {
-    scene.mutateElement(element, { x: element.x + before.midX - after.midX, y: element.y + before.midY - after.midY });
+    scene.mutateElement(element, {
+      x: element.x + before.midX - after.midX,
+      y: element.y + before.midY - after.midY,
+    });
   }
   return [...scene.getNonDeletedElements()] as NonDeletedExcalidrawElement[];
 };
@@ -898,7 +1042,8 @@ export const bindArrowEndpointWithExcalidraw = (
 ) => {
   const scene = new Scene(structuredClone(elements), { skipValidation: true });
   const arrow = scene.getNonDeletedElementsMap().get(arrowId);
-  if (!arrow || arrow.type !== "arrow") return [...scene.getNonDeletedElements()];
+  if (!arrow || arrow.type !== "arrow")
+    return [...scene.getNonDeletedElements()];
   const index = endpoint === "start" ? 0 : arrow.points.length - 1;
   const globalPoint = LinearElementEditor.getPointAtIndexGlobalCoordinates(
     arrow as never,
@@ -951,32 +1096,67 @@ export const fillRegionWithExcalidraw = ({
 }) => {
   const map = elementsMap(elements);
   const globalPoint = pointFrom<GlobalPoint>(point.x, point.y);
-  const result = computeBucketFillPolygon({ point: globalPoint, elements, elementsMap: map });
+  const result = computeBucketFillPolygon({
+    point: globalPoint,
+    elements,
+    elementsMap: map,
+  });
   const hit = hitElements(point, elements, 0)[0];
   if (!result.ok) {
     if (!hit || !isBucketFillCompatible(hit)) return null;
-    return elements.map((element) => element.id === hit.id ? newElementWith(element, { backgroundColor, fillStyle, opacity }) : element);
+    return elements.map((element) =>
+      element.id === hit.id
+        ? newElementWith(element, { backgroundColor, fillStyle, opacity })
+        : element,
+    );
   }
-  if (hit && isRestylableFill({ hitElement: hit, scenePoints: result.scenePoints, elementsMap: map })) {
-    return elements.map((element) => element.id === hit.id ? newElementWith(element, { backgroundColor, fillStyle, opacity }) : element);
+  if (
+    hit &&
+    isRestylableFill({
+      hitElement: hit,
+      scenePoints: result.scenePoints,
+      elementsMap: map,
+    })
+  ) {
+    return elements.map((element) =>
+      element.id === hit.id
+        ? newElementWith(element, { backgroundColor, fillStyle, opacity })
+        : element,
+    );
   }
   const [originX, originY] = result.scenePoints[0];
   const { width, height } = getSizeFromPoints(result.scenePoints);
   const owner = result.ownerId ? map.get(result.ownerId) : null;
   const frameId = owner
-    ? (isFrameLikeElement(owner) ? owner.id : owner.frameId)
-    : getFrameLikeElements(elements).filter((frame) => !frame.locked && isCursorInFrame(point, frame as never, map)).at(-1)?.id ?? null;
-  const groupIds = owner?.groupIds ?? result.boundaryElementIds
-    .map((id) => map.get(id)?.groupIds)
-    .filter((ids): ids is string[] => !!ids)
-    .reduce<string[] | null>((common, ids) => common === null ? ids : common.filter((id) => ids.includes(id)), null) ?? [];
+    ? isFrameLikeElement(owner)
+      ? owner.id
+      : owner.frameId
+    : (getFrameLikeElements(elements)
+        .filter(
+          (frame) =>
+            !frame.locked && isCursorInFrame(point, frame as never, map),
+        )
+        .at(-1)?.id ?? null);
+  const groupIds =
+    owner?.groupIds ??
+    result.boundaryElementIds
+      .map((id) => map.get(id)?.groupIds)
+      .filter((ids): ids is string[] => !!ids)
+      .reduce<string[] | null>(
+        (common, ids) =>
+          common === null ? ids : common.filter((id) => ids.includes(id)),
+        null,
+      ) ??
+    [];
   const fill = newLinearElement({
     type: "line",
     x: originX,
     y: originY,
     width,
     height,
-    points: result.scenePoints.map((candidate) => pointFrom(candidate[0] - originX, candidate[1] - originY)) as never,
+    points: result.scenePoints.map((candidate) =>
+      pointFrom(candidate[0] - originX, candidate[1] - originY),
+    ) as never,
     polygon: true,
     strokeColor: "transparent",
     backgroundColor,
@@ -989,8 +1169,15 @@ export const fillRegionWithExcalidraw = ({
     frameId,
     groupIds,
   });
-  const anchor = elements.findIndex((element) => element.id === result.insertion.elementId);
-  const index = anchor < 0 ? elements.length : result.insertion.placement === "above" ? anchor + 1 : anchor;
+  const anchor = elements.findIndex(
+    (element) => element.id === result.insertion.elementId,
+  );
+  const index =
+    anchor < 0
+      ? elements.length
+      : result.insertion.placement === "above"
+        ? anchor + 1
+        : anchor;
   return [...elements.slice(0, index), fill, ...elements.slice(index)];
 };
 
@@ -1008,32 +1195,69 @@ export const removeElementsWithExcalidraw = (
   }
   const deleted = next.filter((element) => ids.has(element.id));
   fixBindingsAfterDeletion(next, deleted);
-  return { elements: next.filter((element) => !ids.has(element.id)), deletedIds: ids };
+  return {
+    elements: next.filter((element) => !ids.has(element.id)),
+    deletedIds: ids,
+  };
 };
 
 if (import.meta.env.DEV) {
-  const rectangle = newElement({ type: "rectangle", x: 1, y: 2, width: 3, height: 4 });
+  const rectangle = newElement({
+    type: "rectangle",
+    x: 1,
+    y: 2,
+    width: 3,
+    height: 4,
+  });
+  console.assert(elementBounds(rectangle, [rectangle]).width === 3);
   console.assert(
-    elementBounds(rectangle, [rectangle]).width === 3,
+    selectElementsWithinExcalidraw(
+      { start: { x: 0, y: 0 }, end: { x: 10, y: 10 } },
+      [rectangle],
+    ).has(rectangle.id),
   );
+  const sizeable = newElement({
+    type: "rectangle",
+    x: 10,
+    y: 20,
+    width: 100,
+    height: 80,
+  });
   console.assert(
-    selectElementsWithinExcalidraw({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 } }, [rectangle]).has(rectangle.id),
+    hitElements({ x: 60, y: 60 }, [sizeable], 0, true)[0]?.id === sizeable.id,
   );
-  const sizeable = newElement({ type: "rectangle", x: 10, y: 20, width: 100, height: 80 });
-  console.assert(hitElements({ x: 60, y: 60 }, [sizeable], 0, true)[0]?.id === sizeable.id);
   const handles = selectionTransformHandles([sizeable], [sizeable], 1);
   const northwest = handles.nw;
   console.assert(
-    northwest && selectionTransformHandleAt(
-      { x: northwest[0] + northwest[2] / 2, y: northwest[1] + northwest[3] / 2 },
-      [sizeable], [sizeable], 1,
-    ) === "nw",
+    northwest &&
+      selectionTransformHandleAt(
+        {
+          x: northwest[0] + northwest[2] / 2,
+          y: northwest[1] + northwest[3] / 2,
+        },
+        [sizeable],
+        [sizeable],
+        1,
+      ) === "nw",
   );
   const north = handles.n;
-  console.assert(north && selectionTransformHandleAt(
-    { x: north[0] + north[2] / 2, y: north[1] + north[3] / 2 },
-    [sizeable], [sizeable], 1,
-  ) === "n");
-  const second = newElement({ type: "rectangle", x: 180, y: 20, width: 100, height: 80 });
-  console.assert(!!selectionTransformHandles([sizeable, second], [sizeable, second], 1).n);
+  console.assert(
+    north &&
+      selectionTransformHandleAt(
+        { x: north[0] + north[2] / 2, y: north[1] + north[3] / 2 },
+        [sizeable],
+        [sizeable],
+        1,
+      ) === "n",
+  );
+  const second = newElement({
+    type: "rectangle",
+    x: 180,
+    y: 20,
+    width: 100,
+    height: 80,
+  });
+  console.assert(
+    !!selectionTransformHandles([sizeable, second], [sizeable, second], 1).n,
+  );
 }

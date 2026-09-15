@@ -1,7 +1,7 @@
 allowBuilds:
   esbuild: false
 minimumReleaseAgeExclude:
-  - '@excalidraw/common@0.18.0-4e758db'
-  - '@excalidraw/element@0.18.0-4e758db'
-  - '@excalidraw/fractional-indexing@0.18.0-4e758db'
-  - '@excalidraw/math@0.18.0-4e758db'
+  - "@excalidraw/common@0.18.0-4e758db"
+  - "@excalidraw/element@0.18.0-4e758db"
+  - "@excalidraw/fractional-indexing@0.18.0-4e758db"
+  - "@excalidraw/math@0.18.0-4e758db"

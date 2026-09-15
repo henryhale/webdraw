@@ -27,18 +27,30 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { label: "Frame tool", bindings: [["F"]] },
       { label: "Laser pointer", bindings: [["K"]] },
       { label: "Bucket fill", bindings: [["B"]] },
-      { label: "Pick color from canvas", bindings: [["I"], ["Shift", "S"], ["Shift", "G"]] },
+      {
+        label: "Pick color from canvas",
+        bindings: [["I"], ["Shift", "S"], ["Shift", "G"]],
+      },
       { label: "Edit line/arrow points", bindings: [["Ctrl", "Enter"]] },
       { label: "Edit text / add label", bindings: [["Enter"]] },
-      { label: "Add new line (text editor)", bindings: [["Enter"], ["Shift", "Enter"]] },
-      { label: "Finish editing (text editor)", bindings: [["Esc"], ["Ctrl", "Enter"]] },
+      {
+        label: "Add new line (text editor)",
+        bindings: [["Enter"], ["Shift", "Enter"]],
+      },
+      {
+        label: "Finish editing (text editor)",
+        bindings: [["Esc"], ["Ctrl", "Enter"]],
+      },
       { label: "Curved arrow", bindings: [["A", "click", "click", "click"]] },
       { label: "Curved line", bindings: [["L", "click", "click", "click"]] },
       { label: "Crop image", bindings: [["double-click"], ["Enter"]] },
       { label: "Finish image cropping", bindings: [["Enter"], ["Esc"]] },
       { label: "Keep selected tool active after drawing", bindings: [["Q"]] },
       { label: "Prevent arrow binding", bindings: [["Ctrl"]] },
-      { label: "Add / Update link for selected shape", bindings: [["Ctrl", "K"]] },
+      {
+        label: "Add / Update link for selected shape",
+        bindings: [["Ctrl", "K"]],
+      },
       { label: "Toggle shape type", bindings: [["Tab"], ["Shift", "Tab"]] },
     ],
   },
@@ -67,9 +79,18 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Editor",
     items: [
-      { label: "Create flowchart from generic element", bindings: [["Ctrl", "Arrow Key"]] },
+      {
+        label: "Create flowchart from generic element",
+        bindings: [["Ctrl", "Arrow Key"]],
+      },
       { label: "Navigate a flowchart", bindings: [["Alt", "Arrow Key"]] },
-      { label: "Move canvas", bindings: [["Space", "drag"], ["Wheel", "drag"]] },
+      {
+        label: "Move canvas",
+        bindings: [
+          ["Space", "drag"],
+          ["Wheel", "drag"],
+        ],
+      },
       { label: "Reset the canvas", bindings: [["Ctrl", "Delete"]] },
       { label: "Delete", bindings: [["Delete"]] },
       { label: "Cut", bindings: [["Ctrl", "X"]] },
@@ -79,7 +100,10 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { label: "Select all", bindings: [["Ctrl", "A"]] },
       { label: "Add element to selection", bindings: [["Shift", "click"]] },
       { label: "Deep select", bindings: [["Ctrl", "click"]] },
-      { label: "Deep select within box, prevent dragging", bindings: [["Ctrl", "drag"]] },
+      {
+        label: "Deep select within box, prevent dragging",
+        bindings: [["Ctrl", "drag"]],
+      },
       { label: "Copy to clipboard as PNG", bindings: [["Shift", "Alt", "C"]] },
       { label: "Copy styles", bindings: [["Ctrl", "Alt", "C"]] },
       { label: "Paste styles", bindings: [["Ctrl", "Alt", "V"]] },
@@ -91,7 +115,13 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { label: "Align bottom", bindings: [["Ctrl", "Shift", "↓"]] },
       { label: "Align left", bindings: [["Ctrl", "Shift", "←"]] },
       { label: "Align right", bindings: [["Ctrl", "Shift", "→"]] },
-      { label: "Duplicate", bindings: [["Ctrl", "D"], ["Alt", "drag"]] },
+      {
+        label: "Duplicate",
+        bindings: [
+          ["Ctrl", "D"],
+          ["Alt", "drag"],
+        ],
+      },
       { label: "Lock/unlock selection", bindings: [["Ctrl", "Shift", "L"]] },
       { label: "Undo", bindings: [["Ctrl", "Z"]] },
       { label: "Redo", bindings: [["Ctrl", "Shift", "Z"]] },
@@ -110,6 +140,8 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
 
 export const shortcutFor = (label: string) =>
   SHORTCUT_GROUPS.flatMap((group) => group.items)
-    .find((item) => item.label === label)?.bindings[0].join("+") ?? "";
+    .find((item) => item.label === label)
+    ?.bindings[0].join("+") ?? "";
 
-if (import.meta.env.DEV) console.assert(shortcutFor("Export image") === "Ctrl+Shift+E");
+if (import.meta.env.DEV)
+  console.assert(shortcutFor("Export image") === "Ctrl+Shift+E");
