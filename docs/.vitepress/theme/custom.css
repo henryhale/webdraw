@@ -42,7 +42,7 @@
 
 .webdraw-demo__stage {
   height: 360px;
-  background: #fff;
+  background: var(--vp-c-bg);
 }
 
 .webdraw-demo__stage web-draw {

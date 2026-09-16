@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useData } from "vitepress";
 
 const props = defineProps<{ demo: string }>();
 
@@ -20,6 +21,7 @@ type WebdrawElement = HTMLElement & {
   resetScene(): void;
 };
 
+const { isDark } = useData();
 const drawing = ref<WebdrawElement>();
 const output = ref("Use the controls above the canvas.");
 const instanceKey = ref(0);
@@ -58,7 +60,6 @@ const rectangle = (id = "docs-rectangle", x = 80) => ({
 const scene = (background = "#ffffff") => ({
   elements: [rectangle()],
   appState: {
-    theme: "light",
     viewBackgroundColor: background,
     zoom: 1,
     scrollX: 0,
@@ -309,6 +310,7 @@ const onError = (event: Event) => {
         <web-draw
           :key="instanceKey"
           ref="drawing"
+          :theme="isDark ? 'dark' : 'light'"
           @webdraw-ready="onReady"
           @webdraw-change="onChange"
           @webdraw-library-change="onLibraryChange"
