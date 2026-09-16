@@ -1,7 +1,11 @@
 {
   "name": "webdraw",
-  "version": "1.0.0",
-  "description": "Webdraw drawing editor as a framework-agnostic Lit web component",
+  "version": "0.1.0",
+  "description": "Like excalidraw drawing editor but as a framework-agnostic Lit web component",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/henryhale/webdraw.git"
+  },
   "main": "./dist/webdraw.js",
   "module": "./dist/webdraw.js",
   "types": "./dist/webdraw.d.ts",
@@ -23,7 +27,8 @@
     "docs:preview": "vitepress preview docs",
     "lint": "eslint src vite.config.ts",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "release": "release-it"
   },
   "keywords": [
     "webdraw",
@@ -31,7 +36,10 @@
     "web-component",
     "whiteboard"
   ],
-  "author": "",
+  "author": {
+    "name": "Henry Hale",
+    "url": "https://github.com/henryhale"
+  },
   "license": "MIT",
   "devEngines": {
     "packageManager": {
@@ -56,10 +64,26 @@
     "@eslint/js": "10.0.1",
     "eslint": "10.10.0",
     "prettier": "3.8.5",
+    "release-it": "^21.0.3",
     "sass": "1.51.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.70.0",
     "vite": "5.0.12",
     "vitepress": "^1.6.4"
+  },
+  "release-it": {
+    "hooks": {
+      "before:init": [
+        "pnpm lint",
+        "pnpm build"
+      ]
+    },
+    "npm": {
+      "publishPackageManager": "pnpm"
+    },
+    "github": {
+      "release": true,
+      "autoGenerate": true
+    }
   }
 }
