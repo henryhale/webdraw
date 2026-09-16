@@ -8,6 +8,7 @@ type WebdrawElement = HTMLElement & {
   viewModeEnabled: boolean;
   zenModeEnabled: boolean;
   gridModeEnabled: boolean;
+  libraryEnabled: "on" | "off";
   library: string | null;
   storageKey: string;
   initialData: Record<string, unknown>;
@@ -122,8 +123,12 @@ const actions = computed<Action[]>(() => {
       return attributeToggle("grid-mode");
     case "library":
       return [
-        button("Load library", () => setAttribute("library", library)),
+        button("Load library", () => {
+          setAttribute("library-enabled", "on");
+          setAttribute("library", library);
+        }),
         button("Clear library", () => setAttribute("library", "[]")),
+        button("Hide library", () => setAttribute("library-enabled", "off")),
       ];
     case "storage-key":
       return [
@@ -131,6 +136,7 @@ const actions = computed<Action[]>(() => {
           useElement((element) => {
             localStorage.setItem(storageKey, library);
             element.removeAttribute("library");
+            element.setAttribute("library-enabled", "on");
             element.setAttribute("storage-key", storageKey);
             show(`Loaded the library stored at ${storageKey}`);
           }),
@@ -156,6 +162,7 @@ const actions = computed<Action[]>(() => {
       return [
         button("Set library property", () =>
           useElement((element) => {
+            element.libraryEnabled = "on";
             element.library = library;
             show("library property loaded");
           }),

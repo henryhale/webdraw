@@ -181,6 +181,7 @@ export class WebDraw extends LitElement {
     viewModeEnabled: { type: Boolean, attribute: "view-mode", reflect: true },
     zenModeEnabled: { type: Boolean, attribute: "zen-mode", reflect: true },
     gridModeEnabled: { type: Boolean, attribute: "grid-mode", reflect: true },
+    libraryEnabled: { type: String, attribute: "library-enabled" },
     library: { type: String },
     storageKey: { type: String, attribute: "storage-key" },
     initialData: { attribute: false },
@@ -210,6 +211,7 @@ export class WebDraw extends LitElement {
   viewModeEnabled = false;
   zenModeEnabled = false;
   gridModeEnabled = false;
+  libraryEnabled: "on" | "off" = "off";
   library: string | null = null;
   storageKey = "webdraw-library";
   initialData?: WebdrawInitialData;
@@ -615,7 +617,10 @@ export class WebDraw extends LitElement {
                       </div>
                     </section>`}
 
-                <div class="layer-ui__wrapper__top-right">
+                <div
+                  class="layer-ui__wrapper__top-right"
+                  ?hidden=${this.libraryEnabled !== "on"}
+                >
                   <button
                     class="library-button"
                     @click=${() => {

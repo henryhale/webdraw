@@ -58,6 +58,14 @@ drawing.library = JSON.stringify([
 
 <WebdrawDemo demo="library-property" />
 
+## `libraryEnabled`
+
+Set `"on"` to show the library button or `"off"` to hide it. The default is `"off"`.
+
+```js
+drawing.libraryEnabled = "on";
+```
+
 ## `storageKey`
 
 Assign a localStorage key. Use an empty string when the host application handles persistence.

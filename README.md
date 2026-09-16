@@ -3,13 +3,17 @@
 Webdraw is a drawing editor exposed as the `<web-draw>` web component.
 
 ```html
-<web-draw id="drawing" storage-key="my-drawing-library"></web-draw>
+<web-draw
+  id="drawing"
+  library-enabled="on"
+  storage-key="my-drawing-library"
+></web-draw>
 <script type="module" src="/src/webdraw.ts"></script>
 ```
 
 The component needs a height from its container. Set `theme="light"` or `theme="dark"`, `view-mode`, `zen-mode`, or `grid-mode` as needed.
 
-Pass reusable components through the `library` attribute as a JSON array. Each item has an `elements` array of Webdraw scene elements and may have a `name` and `id`. For example, after drawing a shape:
+The library button is hidden by default. Set `library-enabled="on"` to show it and `library-enabled="off"` to hide it. Pass reusable components through the `library` attribute as a JSON array. Each item has an `elements` array of Webdraw scene elements and may have a `name` and `id`. For example, after drawing a shape:
 
 ```js
 const drawing = document.querySelector("web-draw");

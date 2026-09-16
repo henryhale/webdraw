@@ -66,6 +66,14 @@ Load the example, then open **Library** in the canvas to see the reusable item.
 
 Library elements must have string `id` and `type` fields. Images and embeds are rejected because their binary data is not part of a library item.
 
+## `library-enabled`
+
+Set `library-enabled="on"` to show the library button. It is `"off"` by default.
+
+```html
+<web-draw library-enabled="on"></web-draw>
+```
+
 ## `storage-key`
 
 Choose where library edits are persisted in `localStorage`. The default is `webdraw-library`. An empty value disables built-in persistence.

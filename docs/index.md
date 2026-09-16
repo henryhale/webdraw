@@ -15,6 +15,9 @@ hero:
     - theme: alt
       text: JavaScript API
       link: /guide/methods
+    - theme: alt
+      text: Open playground
+      link: /playground
 ---
 
 ## Install and render
