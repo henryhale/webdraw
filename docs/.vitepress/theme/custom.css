@@ -1,0 +1,69 @@
+:root {
+  --vp-c-brand-1: #2f9e44;
+  --vp-c-brand-2: #2b8a3e;
+  --vp-c-brand-3: #237032;
+  --vp-c-brand-soft: #d3f9d8;
+}
+
+.webdraw-demo {
+  margin: 1rem 0 2rem;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+}
+
+.webdraw-demo__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.webdraw-demo__controls button,
+.webdraw-demo__controls input {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+}
+
+.webdraw-demo__controls button {
+  cursor: pointer;
+}
+
+.webdraw-demo__controls button:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+.webdraw-demo__stage {
+  height: 360px;
+  background: #fff;
+}
+
+.webdraw-demo__stage web-draw {
+  display: block;
+  height: 100%;
+}
+
+.webdraw-demo__output {
+  max-height: 12rem;
+  margin: 0;
+  overflow: auto;
+  padding: 0.75rem;
+  border-top: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  background: var(--vp-code-block-bg);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .webdraw-demo__stage {
+    height: 440px;
+  }
+}
