@@ -900,9 +900,11 @@ kbd {
   width: 3rem;
   height: 3rem;
   place-items: center;
-  border-radius: 0.75rem;
-  color: #fff;
-  background: var(--color-primary);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
 }
 
 .welcome-screen-center__heading {

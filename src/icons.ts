@@ -203,3 +203,10 @@ export const edgeIcon = (round: boolean) =>
       <path d="M3.333 10V3.333H10"/>
       <path d="M13.333 3.333h.01M16.667 3.333h.01M16.667 6.667h.01M16.667 10h.01M3.333 13.333h.01M16.667 13.333h.01M3.333 16.667h.01M6.667 16.667h.01M10 16.667h.01M13.333 16.667h.01M16.667 16.667h.01"/>
     </svg>`;
+
+export const logoIcon = svg`<svg aria-hidden="true" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="16" fill="#2f9e44"/>
+    <path d="M13 18l9 28 10-20 10 20 9-28" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="13" cy="18" r="3" fill="#b2f2bb"/>
+    <circle cx="51" cy="18" r="3" fill="#b2f2bb"/>
+  </svg>`;

@@ -34,7 +34,7 @@ import {
   isUsingAdaptiveRadius,
   newElementWith,
 } from "@excalidraw/element";
-import { edgeIcon, icon, sloppinessIcon } from "./icons";
+import { edgeIcon, icon, logoIcon, sloppinessIcon } from "./icons";
 import { LilitaFontFaces } from "./fonts/Lilita";
 import { SHORTCUT_GROUPS, shortcutFor } from "./shortcuts";
 import {
@@ -1086,7 +1086,8 @@ export class WebDraw extends LitElement {
   private renderWelcome() {
     return html` <div class="welcome-screen-center">
         <div class="welcome-screen-center__logo">
-          <span class="welcome-logo-mark">W</span><strong>Webdraw</strong>
+          <span class="welcome-logo-mark">${logoIcon}</span
+          ><strong>Webdraw</strong>
         </div>
         <div class="welcome-screen-center__heading">
           Diagrams. Made. Simple.
