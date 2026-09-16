@@ -59,24 +59,24 @@ web-draw {
   --text-primary-color: #1b1b1f;
   --icon-fill-color: #1b1b1f;
   --keybinding-color: #b8b8b8;
-  --default-border-color: #f1f0ff;
-  --button-hover-bg: #f1f0ff;
-  --button-active-bg: #f1f0ff;
-  --button-active-border: #4440bf;
-  --color-primary: #6965db;
-  --color-primary-darker: #5b57d1;
-  --color-surface-primary-container: #e0dfff;
-  --color-on-primary-container: #030064;
+  --default-border-color: #e9f7ef;
+  --button-hover-bg: #e9f7ef;
+  --button-active-bg: #e9f7ef;
+  --button-active-border: #2b8a3e;
+  --color-primary: #2f9e44;
+  --color-primary-darker: #2b8a3e;
+  --color-surface-primary-container: #d3f9d8;
+  --color-on-primary-container: #0b3d1a;
   --color-on-surface: #1b1b1f;
   --color-surface-low: #ececf4;
-  --color-surface-high: #f1f0ff;
+  --color-surface-high: #e9f7ef;
   --color-disabled: #b8b8b8;
   --color-gray-10: #f8f9fa;
   --color-gray-30: #e9ecef;
   --color-gray-60: #868e96;
   --color-gray-80: #343a40;
-  --color-brand-active: #5753d0;
-  --focus-highlight-color: #d0bfff;
+  --color-brand-active: #2b8a3e;
+  --focus-highlight-color: #8ce99a;
   --shadow-island:
     0 0 1px rgba(0, 0, 0, 0.17), 0 0 3px rgba(0, 0, 0, 0.08),
     0 7px 14px rgba(0, 0, 0, 0.05);
@@ -132,24 +132,24 @@ web-draw {
     --text-primary-color: #e3e3e8;
     --icon-fill-color: #e3e3e8;
     --keybinding-color: #7a7a7a;
-    --default-border-color: #2e2d39;
-    --button-hover-bg: #2e2d39;
-    --button-active-bg: #2e2d39;
-    --button-active-border: #d0ccff;
-    --color-primary: #a8a5ff;
-    --color-primary-darker: #b2aeff;
-    --color-surface-primary-container: #403e6a;
-    --color-on-primary-container: #e0dfff;
+    --default-border-color: #29352d;
+    --button-hover-bg: #29352d;
+    --button-active-bg: #29352d;
+    --button-active-border: #b2f2bb;
+    --color-primary: #69db7c;
+    --color-primary-darker: #8ce99a;
+    --color-surface-primary-container: #234d2c;
+    --color-on-primary-container: #d3f9d8;
     --color-on-surface: #e3e3e8;
     --color-surface-low: #24242a;
-    --color-surface-high: #2e2d39;
+    --color-surface-high: #29352d;
     --color-disabled: #5c5c5c;
     --color-gray-10: #1b1b1f;
     --color-gray-30: #34343b;
     --color-gray-60: #adb5bd;
     --color-gray-80: #e3e3e8;
-    --color-brand-active: #a8a5ff;
-    --focus-highlight-color: #5f3dc4;
+    --color-brand-active: #69db7c;
+    --focus-highlight-color: #2f9e44;
   }
 }
 
@@ -364,10 +364,10 @@ web-draw {
   border: 0;
   border-radius: var(--border-radius-lg);
   color: #fff;
-  background: #6965db;
+  background: var(--color-primary);
 
   &:hover {
-    background: #5753d0;
+    background: var(--color-primary-darker);
   }
   svg {
     width: 1rem;
@@ -721,7 +721,7 @@ kbd {
     font-family: "Lilita One", sans-serif;
   }
   .font-size button {
-    font-family: Excalifont, Virgil, sans-serif;
+    font-family: Nunito, Assistant, sans-serif;
   }
   .text-left {
     text-align: left;
@@ -896,8 +896,8 @@ kbd {
   gap: 0.75rem;
   color: var(--color-primary);
   font:
-    700 2.25rem Excalifont,
-    Virgil,
+    700 2.25rem Nunito,
+    Assistant,
     sans-serif;
 }
 
@@ -914,8 +914,8 @@ kbd {
 .welcome-screen-center__heading {
   color: var(--color-gray-60);
   font:
-    1.25rem Excalifont,
-    Virgil,
+    1.25rem Nunito,
+    Assistant,
     sans-serif;
 }
 
@@ -953,8 +953,8 @@ kbd {
   position: absolute;
   color: var(--color-gray-60);
   font:
-    1rem Excalifont,
-    Virgil,
+    1rem Nunito,
+    Assistant,
     sans-serif;
   pointer-events: none;
 }
@@ -1372,7 +1372,7 @@ kbd {
   outline: 0;
   color: var(--text-primary-color);
   background: transparent;
-  font-family: Excalifont, Virgil, sans-serif;
+  font-family: Nunito, Assistant, sans-serif;
   line-height: 1.25;
   resize: none;
   white-space: pre;
