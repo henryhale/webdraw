@@ -422,6 +422,8 @@ web-draw {
 
 .dropdown-menu {
   width: min(23rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 12rem);
+  overflow-y: auto;
   padding: 0.75rem;
 
   .dropdown-menu__item {
