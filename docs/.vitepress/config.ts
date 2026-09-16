@@ -27,6 +27,12 @@ export default defineConfig({
         ],
       },
     ],
+    footer: {
+      message:
+        'Released under the <a href="https://github.com/henryhale/webdraw/blob/master/LICENSE.txt">MIT License</a>.',
+      copyright:
+        'Copyright © 2026-present, <a href="https://github.com/henryhale">Henry Hale</a>.',
+    },
     search: { provider: "local" },
   },
   vite: {
