@@ -93,6 +93,8 @@ web-draw {
   display: flex;
   width: 100%;
   height: 100%;
+  // lets mobile panels size against the editor box, not the viewport
+  container-type: size;
   overflow: hidden;
   color: var(--text-primary-color);
   background: var(--default-bg-color);
@@ -1382,37 +1384,118 @@ kbd {
   pointer-events: all;
 }
 
-@media (max-width: 760px) {
-  .webdraw {
-    --editor-container-padding: 0.75rem;
+// Mobile layout. Excalidraw toggles this from the editor's measured box rather
+// than a viewport media query, so an embedded editor in a narrow column gets the
+// mobile UI too; `webdraw--mobile` is set by updateFormFactor().
+.webdraw--mobile {
+  --editor-container-padding: 0.75rem;
+
+  .ToolIcon__keybinding {
+    display: none;
   }
+
+  // toolbar spans the top and scrolls sideways when it runs out of room
   .shapes-section {
-    top: auto;
-    bottom: 0;
-    max-width: calc(100vw - 1.5rem);
+    top: 0;
+    right: 0;
+    left: 0;
+    transform: none;
+  }
+  .App-toolbar-container {
+    justify-content: center;
+    min-width: 0;
+  }
+  .App-toolbar {
+    min-width: 0;
   }
   .toolbar-row {
     overflow-x: auto;
-    max-width: calc(100vw - 1.5rem);
+    scrollbar-width: none;
   }
-  .ToolIcon__keybinding,
-  .library-button span {
+  .App-toolbar [data-testid="toolbar-hand"],
+  .App-toolbar [data-testid="toolbar-lock"],
+  .App-toolbar .App-toolbar__divider:first-of-type {
     display: none;
+  }
+
+  // library / lock / hand stack down the right edge, clear of the toolbar
+  .layer-ui__wrapper__top-right {
+    position: absolute;
+    top: 4rem;
+    right: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: var(--border-radius-lg);
+    background: var(--island-bg-color);
+    box-shadow: var(--shadow-island);
   }
   .library-button {
     width: 2.25rem;
     justify-content: center;
     padding: 0;
+    background: transparent;
+    box-shadow: none;
+
+    span {
+      display: none;
+    }
   }
-  .selected-shape-actions {
-    display: none;
+  .library-panel {
+    position: absolute;
+    top: 0;
+    right: 2.75rem;
   }
+
+  // zoom/help give way to a single bottom action bar
   .layer-ui__wrapper__footer {
-    bottom: 4.25rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    justify-content: center;
   }
-  .undo-actions {
-    display: none;
+  .mobile-bar {
+    position: relative;
+    display: flex;
+    width: 100%;
+    max-width: 450px;
+    align-items: center;
+    padding: 0.25rem;
+
+    // menu and undo/redo take the edges so the shape actions land dead centre
+    &__group {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    &__group--center {
+      flex: 0 0 auto;
+    }
+    &__group:last-child {
+      justify-content: flex-end;
+    }
+
+    button:disabled {
+      color: var(--color-disabled);
+      cursor: default;
+    }
+    button:disabled:hover .ToolIcon__icon {
+      background: transparent;
+    }
+
+    // panels open upwards out of the bar, spanning its full width
+    .dropdown-menu,
+    .selected-shape-actions {
+      position: absolute;
+      top: auto;
+      bottom: 3rem;
+      left: 0;
+      width: 100%;
+      max-height: 60cqh;
+    }
   }
+
   .welcome-screen-decor-hint {
     display: none;
   }

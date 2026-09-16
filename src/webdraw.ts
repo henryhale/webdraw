@@ -92,6 +92,7 @@ import type {
 import {
   cursorForHandle,
   encodeSceneMetadata,
+  isMobileBreakpoint,
   normalizeBounds,
   type Point,
   type ResizeHandle,
@@ -205,6 +206,7 @@ export class WebDraw extends LitElement {
     snapToObjects: { state: true },
     croppingImageId: { state: true },
     editingFrameId: { state: true },
+    mobile: { state: true },
   };
 
   theme: WebdrawTheme = "auto";
@@ -235,6 +237,7 @@ export class WebDraw extends LitElement {
   snapToObjects = false;
   croppingImageId: string | null = null;
   editingFrameId: string | null = null;
+  mobile = false;
 
   private canvas?: HTMLCanvasElement;
   private observer?: ResizeObserver;
@@ -327,7 +330,11 @@ export class WebDraw extends LitElement {
 
   protected firstUpdated() {
     this.canvas = this.querySelector("canvas") ?? undefined;
-    this.observer = new ResizeObserver(() => this.paint());
+    this.observer = new ResizeObserver(() => {
+      this.updateFormFactor();
+      this.paint();
+    });
+    this.updateFormFactor();
     this.observer.observe(this);
     this.dispatchEvent(
       new CustomEvent("webdraw-ready", { bubbles: true, composed: true }),
@@ -467,7 +474,9 @@ export class WebDraw extends LitElement {
             ? "text"
             : "crosshair";
     return html` <div
-      class="webdraw ${this.isDarkTheme() ? "theme--dark" : ""}"
+      class="webdraw ${this.isDarkTheme() ? "theme--dark" : ""} ${this.mobile
+        ? "webdraw--mobile"
+        : ""}"
       dir="ltr"
       style=${`--canvas-background: ${this.canvasColor}; --canvas-cursor: ${cursor}`}
     >
@@ -551,20 +560,7 @@ export class WebDraw extends LitElement {
           : html` <div class="FixedSideContainer FixedSideContainer_side_top">
               <div class="App-menu App-menu_top">
                 <div class="App-menu_top__left">
-                  <button
-                    class="webdraw-floating ToolIcon ToolIcon_type_button"
-                    aria-label="Open menu"
-                    title="Open menu"
-                    @click=${() => {
-                      this.menuOpen = !this.menuOpen;
-                      this.libraryOpen = false;
-                      this.moreToolsOpen = false;
-                    }}
-                  >
-                    <span class="ToolIcon__icon">${icon("menu")}</span>
-                  </button>
-                  ${this.menuOpen ? this.renderMenu() : nothing}
-                  ${this.propertiesOpen ? this.renderProperties() : nothing}
+                  ${this.mobile ? nothing : this.renderMenuStack()}
                 </div>
 
                 ${this.viewModeEnabled
@@ -580,6 +576,7 @@ export class WebDraw extends LitElement {
                                 : ""}"
                               title="Keep selected tool active (Q)"
                               aria-label="Keep selected tool active"
+                              data-testid="toolbar-lock"
                               aria-pressed=${this.toolLocked}
                               @click=${() =>
                                 (this.toolLocked = !this.toolLocked)}
@@ -619,18 +616,34 @@ export class WebDraw extends LitElement {
 
                 <div
                   class="layer-ui__wrapper__top-right"
-                  ?hidden=${this.libraryEnabled !== "on"}
+                  ?hidden=${this.libraryEnabled !== "on" && !this.mobile}
                 >
-                  <button
-                    class="library-button"
-                    @click=${() => {
-                      this.libraryOpen = !this.libraryOpen;
-                      this.menuOpen = false;
-                      this.moreToolsOpen = false;
-                    }}
-                  >
-                    ${icon("library")}<span>Library</span>
-                  </button>
+                  ${this.libraryEnabled === "on"
+                    ? html` <button
+                        class="library-button"
+                        @click=${() => {
+                          this.libraryOpen = !this.libraryOpen;
+                          this.menuOpen = false;
+                          this.moreToolsOpen = false;
+                        }}
+                      >
+                        ${icon("library")}<span>Library</span>
+                      </button>`
+                    : nothing}
+                  ${this.mobile && !this.viewModeEnabled
+                    ? html` <button
+                          class="ToolIcon ToolIcon_type_toggle ${this.toolLocked
+                            ? "ToolIcon--checked"
+                            : ""}"
+                          title="Keep selected tool active (Q)"
+                          aria-label="Keep selected tool active"
+                          aria-pressed=${this.toolLocked}
+                          @click=${() => (this.toolLocked = !this.toolLocked)}
+                        >
+                          <span class="ToolIcon__icon">${icon("lock")}</span>
+                        </button>
+                        ${this.renderTool(TOOL_META[0])}`
+                    : nothing}
                   ${this.libraryOpen
                     ? html` <aside class="Island library-panel">
                         <header>
@@ -710,51 +723,53 @@ export class WebDraw extends LitElement {
             </div>`}
 
         <div class="layer-ui__wrapper__footer">
-          <div class="layer-ui__wrapper__footer-left">
-            <div class="Island zoom-actions">
-              <button
-                @click=${() => this.setZoom(this.zoom - 0.1)}
-                aria-label="Zoom out"
-              >
-                −
-              </button>
-              <button class="zoom-value" @click=${() => this.setZoom(1)}>
-                ${Math.round(this.zoom * 100)}%
-              </button>
-              <button
-                @click=${() => this.setZoom(this.zoom + 0.1)}
-                aria-label="Zoom in"
-              >
-                +
-              </button>
-            </div>
-            <div class="Island undo-actions">
-              <button
-                @click=${this.undo}
-                ?disabled=${!this.history.length}
-                aria-label="Undo"
-              >
-                ${icon("undo")}
-              </button>
-              <button
-                @click=${this.redo}
-                ?disabled=${!this.future.length}
-                aria-label="Redo"
-              >
-                ${icon("redo")}
-              </button>
-            </div>
-          </div>
-          <div class="layer-ui__wrapper__footer-right">
-            <button
-              class="webdraw-floating help-button"
-              title="Help"
-              aria-label="Help"
-              @click=${() => (this.dialog = "help")}
-            >
-              ${icon("help")}
-            </button>
-          </div>
+          ${this.mobile
+            ? this.renderMobileBar()
+            : html` <div class="layer-ui__wrapper__footer-left">
+                  <div class="Island zoom-actions">
+                    <button
+                      @click=${() => this.setZoom(this.zoom - 0.1)}
+                      aria-label="Zoom out"
+                    >
+                      −
+                    </button>
+                    <button class="zoom-value" @click=${() => this.setZoom(1)}>
+                      ${Math.round(this.zoom * 100)}%
+                    </button>
+                    <button
+                      @click=${() => this.setZoom(this.zoom + 0.1)}
+                      aria-label="Zoom in"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div class="Island undo-actions">
+                    <button
+                      @click=${this.undo}
+                      ?disabled=${!this.history.length}
+                      aria-label="Undo"
+                    >
+                      ${icon("undo")}
+                    </button>
+                    <button
+                      @click=${this.redo}
+                      ?disabled=${!this.future.length}
+                      aria-label="Redo"
+                    >
+                      ${icon("redo")}
+                    </button>
+                  </div>
+                </div>
+                <div class="layer-ui__wrapper__footer-right">
+                  <button
+                    class="webdraw-floating help-button"
+                    title="Help"
+                    aria-label="Help"
+                    @click=${() => (this.dialog = "help")}
+                  >
+                    ${icon("help")}
+                  </button>
+                </div>`}
         </div>
         ${!this.elements.length && !this.viewModeEnabled
           ? this.renderWelcome()
@@ -805,6 +820,86 @@ export class WebDraw extends LitElement {
         @input=${(event: InputEvent) =>
           this.setBackground((event.target as HTMLInputElement).value)}
       />
+    </div>`;
+  }
+
+  private renderMenuStack() {
+    return html` <button
+        class="webdraw-floating ToolIcon ToolIcon_type_button"
+        aria-label="Open menu"
+        title="Open menu"
+        @click=${() => {
+          this.menuOpen = !this.menuOpen;
+          this.libraryOpen = false;
+          this.moreToolsOpen = false;
+        }}
+      >
+        <span class="ToolIcon__icon">${icon("menu")}</span>
+      </button>
+      ${this.menuOpen ? this.renderMenu() : nothing}
+      ${this.propertiesOpen && (!this.mobile || this.selectedIds.size)
+        ? this.renderProperties()
+        : nothing}`;
+  }
+
+  private renderMobileBar() {
+    const selected = this.selectedIds.size > 0;
+    return html` <div class="Island mobile-bar">
+      <div class="mobile-bar__group">${this.renderMenuStack()}</div>
+      <div class="mobile-bar__group mobile-bar__group--center">
+        ${selected
+          ? html` <button
+                class="ToolIcon ToolIcon_type_toggle ${this.propertiesOpen
+                  ? "ToolIcon--checked"
+                  : ""}"
+                title="Shape properties"
+                aria-label="Shape properties"
+                aria-pressed=${this.propertiesOpen}
+                @click=${() => {
+                  this.propertiesOpen = !this.propertiesOpen;
+                  this.menuOpen = false;
+                }}
+              >
+                <span class="ToolIcon__icon">${icon("preferences")}</span>
+              </button>
+              <button
+                class="ToolIcon ToolIcon_type_button"
+                title="Duplicate"
+                aria-label="Duplicate"
+                @click=${this.duplicateSelected}
+              >
+                <span class="ToolIcon__icon">${icon("duplicate")}</span>
+              </button>
+              <button
+                class="ToolIcon ToolIcon_type_button"
+                title="Delete"
+                aria-label="Delete"
+                @click=${() => this.deleteSelected()}
+              >
+                <span class="ToolIcon__icon">${icon("delete")}</span>
+              </button>`
+          : nothing}
+      </div>
+      <div class="mobile-bar__group">
+        <button
+          class="ToolIcon ToolIcon_type_button"
+          title="Undo"
+          aria-label="Undo"
+          ?disabled=${!this.history.length}
+          @click=${this.undo}
+        >
+          <span class="ToolIcon__icon">${icon("undo")}</span>
+        </button>
+        <button
+          class="ToolIcon ToolIcon_type_button"
+          title="Redo"
+          aria-label="Redo"
+          ?disabled=${!this.future.length}
+          @click=${this.redo}
+        >
+          <span class="ToolIcon__icon">${icon("redo")}</span>
+        </button>
+      </div>
     </div>`;
   }
 
@@ -3048,6 +3143,14 @@ export class WebDraw extends LitElement {
   private setZoom(value: number) {
     this.zoom = Math.min(30, Math.max(0.1, Math.round(value * 10) / 10));
   }
+  private updateFormFactor() {
+    const { width, height } = this.getBoundingClientRect();
+    const mobile = isMobileBreakpoint(width, height);
+    if (mobile === this.mobile) return;
+    this.mobile = mobile;
+    this.propertiesOpen = !mobile;
+  }
+
   private isDarkTheme() {
     return (
       this.theme === "dark" ||

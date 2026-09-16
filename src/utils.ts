@@ -32,6 +32,11 @@ export const encodeSceneMetadata = (scene: string) => {
   });
 };
 
+// Excalidraw's isMobileBreakpoint: measured on the editor box, not the viewport,
+// so an embedded editor in a narrow column still gets the mobile UI.
+export const isMobileBreakpoint = (width: number, height: number) =>
+  width <= 599 || (height < 500 && width < 1000);
+
 export const cursorForHandle = (handle: ResizeHandle, angle = 0) => {
   const directions: ResizeHandle[] = [
     "n",
@@ -63,6 +68,12 @@ if (import.meta.env.DEV) {
     Math.abs(rotated.x) < 1e-10 && Math.abs(rotated.y - 1) < 1e-10,
   );
   console.assert(JSON.parse(encodeSceneMetadata("✓")).encoded.length === 3);
+  console.assert(
+    isMobileBreakpoint(599, 900) &&
+      !isMobileBreakpoint(600, 900) &&
+      isMobileBreakpoint(900, 499) &&
+      !isMobileBreakpoint(1000, 499),
+  );
   console.assert(
     cursorForHandle("n") === "n-resize" &&
       cursorForHandle("w") === "w-resize" &&
