@@ -11,6 +11,7 @@ export default defineConfig({
     logo: { src: "/logo.svg", alt: "Webdraw" },
     nav: [
       { text: "Get started", link: "/" },
+      { text: "Playground", link: "/playground" },
       { text: "Attributes", link: "/guide/attributes" },
       { text: "Methods", link: "/guide/methods" },
     ],
