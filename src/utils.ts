@@ -32,8 +32,6 @@ export const encodeSceneMetadata = (scene: string) => {
   });
 };
 
-// Excalidraw's isMobileBreakpoint: measured on the editor box, not the viewport,
-// so an embedded editor in a narrow column still gets the mobile UI.
 export const isMobileBreakpoint = (width: number, height: number) =>
   width <= 599 || (height < 500 && width < 1000);
 
