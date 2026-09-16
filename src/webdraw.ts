@@ -63,6 +63,7 @@ import {
   moveLinearPointWithExcalidraw,
   moveElementsInLayerWithExcalidraw,
   renderExcalidrawElements,
+  renderExcalidrawElementsToSvg,
   removeElementsWithExcalidraw,
   reconcileFrameMembershipWithExcalidraw,
   replaceElementWithExcalidraw,
@@ -4025,12 +4026,37 @@ export class WebDraw extends LitElement {
   };
 
   private exportSvg = () => {
-    const canvas = this.createExportCanvas();
-    // ponytail: raster-backed SVG keeps one renderer; replace with rough.svg when editable vector export is required.
-    const metadata = this.exportEmbedScene
-      ? `<metadata><!-- payload-type:application/vnd.webdraw+json --><!-- payload-version:2 --><!-- payload-start -->${this.ownerDocument.defaultView!.btoa(encodeSceneMetadata(this.serializedScene()))}<!-- payload-end --></metadata>`
-      : "";
-    const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">${metadata}<image width="100%" height="100%" href="${canvas.toDataURL("image/png")}"/></svg>`;
+    const { elements, width, height, scrollX, scrollY } = this.exportGeometry();
+    const svg = renderExcalidrawElementsToSvg({
+      elements,
+      files: this.files,
+      theme: this.exportDarkMode ? "dark" : "light",
+      width,
+      height,
+      scale: this.exportScale,
+      scrollX,
+      scrollY,
+      background: this.exportBackground
+        ? this.exportDarkMode
+          ? "#121212"
+          : this.canvasColor
+        : null,
+      canvasBackgroundColor: this.canvasColor,
+      fontFamilyString: (fontFamily) => this.fontName(fontFamily),
+      ownerDocument: this.ownerDocument,
+    });
+    if (this.exportEmbedScene) {
+      const metadata = this.ownerDocument.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "metadata",
+      );
+      metadata.innerHTML = `<!-- payload-type:application/vnd.webdraw+json --><!-- payload-version:2 --><!-- payload-start -->${this.ownerDocument.defaultView!.btoa(encodeSceneMetadata(this.serializedScene()))}<!-- payload-end -->`;
+      svg.appendChild(metadata);
+    }
+    const svgData =
+      new this.ownerDocument.defaultView!.XMLSerializer().serializeToString(
+        svg,
+      );
     this.download(
       new Blob([svgData], { type: "image/svg+xml" }),
       "drawing.svg",
@@ -4067,7 +4093,7 @@ export class WebDraw extends LitElement {
     });
   }
 
-  private createExportCanvas() {
+  private exportGeometry() {
     const elements = this.exportElements();
     const boxes = elements.map((item) => this.bounds(item as MutableElement));
     const minX = boxes.length ? Math.min(...boxes.map((box) => box.x)) : 0,
@@ -4078,16 +4104,27 @@ export class WebDraw extends LitElement {
       maxY = boxes.length
         ? Math.max(...boxes.map((box) => box.y + box.height))
         : 1;
-    const padding = this.exportPadding,
-      canvas = this.ownerDocument.createElement("canvas");
-    canvas.width = Math.max(
-      1,
-      Math.ceil((maxX - minX + padding * 2) * this.exportScale),
-    );
-    canvas.height = Math.max(
-      1,
-      Math.ceil((maxY - minY + padding * 2) * this.exportScale),
-    );
+    const padding = this.exportPadding;
+    return {
+      elements,
+      scrollX: padding - minX,
+      scrollY: padding - minY,
+      width: Math.max(
+        1,
+        Math.ceil((maxX - minX + padding * 2) * this.exportScale),
+      ),
+      height: Math.max(
+        1,
+        Math.ceil((maxY - minY + padding * 2) * this.exportScale),
+      ),
+    };
+  }
+
+  private createExportCanvas() {
+    const { elements, width, height, scrollX, scrollY } = this.exportGeometry();
+    const canvas = this.ownerDocument.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
     const context = canvas.getContext("2d")!;
     if (this.exportBackground) {
       context.fillStyle = this.exportDarkMode ? "#121212" : this.canvasColor;
@@ -4102,8 +4139,8 @@ export class WebDraw extends LitElement {
       imageCache: this.imageCache,
       theme: this.exportDarkMode ? "dark" : "light",
       zoom: 1,
-      scrollX: padding - minX,
-      scrollY: padding - minY,
+      scrollX,
+      scrollY,
       canvasBackgroundColor: this.canvasColor,
       isExporting: true,
     });

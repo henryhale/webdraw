@@ -54,17 +54,27 @@ import {
   isFrameLikeElement,
   newLinearElement,
   isArrowElement,
+  ShapeCache,
+  getLineHeightInPx,
   transformElements,
   updateBoundElements,
 } from "@excalidraw/element";
 import { pointFrom, type GlobalPoint, type LocalPoint } from "@excalidraw/math";
-import { FRAME_STYLE, arrayToMap, getSizeFromPoints } from "@excalidraw/common";
+import {
+  FRAME_STYLE,
+  arrayToMap,
+  getSizeFromPoints,
+  getVerticalOffset,
+  applyDarkModeFilter,
+} from "@excalidraw/common";
 import type {
   ElementsMap,
   FileId,
   NonDeletedExcalidrawElement,
   NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
+import rough from "roughjs/bin/rough";
+import type { Drawable } from "roughjs/bin/core";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { ResizeHandle, Point } from "./utils";
 import type { TextAlign, VerticalAlign } from "./types";
@@ -431,6 +441,232 @@ export const renderExcalidrawElements = ({
     }
     context.restore();
   }
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+export const renderExcalidrawElementsToSvg = ({
+  elements,
+  files,
+  theme,
+  width,
+  height,
+  scale,
+  scrollX,
+  scrollY,
+  background,
+  canvasBackgroundColor,
+  fontFamilyString,
+  ownerDocument,
+}: {
+  elements: readonly NonDeletedExcalidrawElement[];
+  files: Record<string, { dataURL: string }>;
+  theme: "light" | "dark";
+  width: number;
+  height: number;
+  scale: number;
+  scrollX: number;
+  scrollY: number;
+  background: string | null;
+  canvasBackgroundColor: string;
+  fontFamilyString: (fontFamily: number) => string;
+  ownerDocument: Document;
+}) => {
+  const svg = ownerDocument.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttribute("width", `${width}`);
+  svg.setAttribute("height", `${height}`);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  const defs = ownerDocument.createElementNS(SVG_NS, "defs");
+  svg.appendChild(defs);
+
+  if (background) {
+    const backdrop = ownerDocument.createElementNS(SVG_NS, "rect");
+    backdrop.setAttribute("width", "100%");
+    backdrop.setAttribute("height", "100%");
+    backdrop.setAttribute("fill", background);
+    svg.appendChild(backdrop);
+  }
+
+  const root = ownerDocument.createElementNS(SVG_NS, "g");
+  root.setAttribute("transform", `scale(${scale})`);
+  svg.appendChild(root);
+
+  const roughSvg = rough.svg(svg);
+  const map = elementsMap(elements);
+  const dark = theme === "dark";
+  const renderConfig = {
+    isExporting: true,
+    canvasBackgroundColor,
+    embedsValidationStatus: new Map(),
+    theme,
+  } as never;
+
+  const place = (
+    element: NonDeletedExcalidrawElement,
+    nodes: readonly SVGElement[],
+  ) => {
+    const group = ownerDocument.createElementNS(SVG_NS, "g");
+    const degree = (180 * (element.angle ?? 0)) / Math.PI;
+    group.setAttribute(
+      "transform",
+      `translate(${element.x + scrollX} ${element.y + scrollY}) rotate(${degree} ${element.width / 2} ${element.height / 2})`,
+    );
+    if (element.opacity !== 100)
+      group.setAttribute("opacity", `${element.opacity / 100}`);
+    for (const node of nodes) group.appendChild(node);
+    root.appendChild(group);
+  };
+
+  const drawText = (element: NonDeletedExcalidrawElement) => {
+    const text = element as NonDeletedExcalidrawElement & {
+      text: string;
+      fontSize: number;
+      fontFamily: number;
+      lineHeight: number;
+      textAlign: string;
+    };
+    const lineHeightPx = getLineHeightInPx(
+      text.fontSize,
+      text.lineHeight as never,
+    );
+    const verticalOffset = getVerticalOffset(
+      text.fontFamily as never,
+      text.fontSize,
+      lineHeightPx,
+    );
+    const horizontalOffset =
+      text.textAlign === "center"
+        ? element.width / 2
+        : text.textAlign === "right"
+          ? element.width
+          : 0;
+    const anchor =
+      text.textAlign === "center"
+        ? "middle"
+        : text.textAlign === "right"
+          ? "end"
+          : "start";
+    return text.text
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line, index) => {
+        const node = ownerDocument.createElementNS(SVG_NS, "text");
+        node.textContent = line;
+        node.setAttribute("x", `${horizontalOffset}`);
+        node.setAttribute("y", `${index * lineHeightPx + verticalOffset}`);
+        node.setAttribute("font-family", fontFamilyString(text.fontFamily));
+        node.setAttribute("font-size", `${text.fontSize}px`);
+        node.setAttribute(
+          "fill",
+          applyDarkModeFilter(element.strokeColor, dark),
+        );
+        node.setAttribute("text-anchor", anchor);
+        node.setAttribute("style", "white-space: pre;");
+        node.setAttribute("dominant-baseline", "alphabetic");
+        return node;
+      });
+  };
+
+  const drawImage = (element: NonDeletedExcalidrawElement) => {
+    const image = element as NonDeletedExcalidrawElement & {
+      fileId?: string;
+      crop?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        naturalWidth: number;
+        naturalHeight: number;
+      } | null;
+    };
+    const file = image.fileId ? files[image.fileId] : undefined;
+    if (!file) return [];
+    const node = ownerDocument.createElementNS(SVG_NS, "image");
+    node.setAttribute("href", file.dataURL);
+    if (!image.crop) {
+      node.setAttribute("width", `${element.width}`);
+      node.setAttribute("height", `${element.height}`);
+      return [node];
+    }
+    const { crop } = image;
+    const scaleX = element.width / crop.width;
+    const scaleY = element.height / crop.height;
+    node.setAttribute("x", `${-crop.x * scaleX}`);
+    node.setAttribute("y", `${-crop.y * scaleY}`);
+    node.setAttribute("width", `${crop.naturalWidth * scaleX}`);
+    node.setAttribute("height", `${crop.naturalHeight * scaleY}`);
+    const clipPath = ownerDocument.createElementNS(SVG_NS, "clipPath");
+    const clipId = `webdraw-crop-${element.id}`;
+    clipPath.setAttribute("id", clipId);
+    const bounds = ownerDocument.createElementNS(SVG_NS, "rect");
+    bounds.setAttribute("width", `${element.width}`);
+    bounds.setAttribute("height", `${element.height}`);
+    clipPath.appendChild(bounds);
+    defs.appendChild(clipPath);
+    const clipped = ownerDocument.createElementNS(SVG_NS, "g");
+    clipped.setAttribute("clip-path", `url(#${clipId})`);
+    clipped.appendChild(node);
+    return [clipped];
+  };
+
+  const drawFrame = (element: NonDeletedExcalidrawElement) => {
+    const node = ownerDocument.createElementNS(SVG_NS, "rect");
+    node.setAttribute("width", `${element.width}`);
+    node.setAttribute("height", `${element.height}`);
+    node.setAttribute("rx", `${FRAME_STYLE.radius}`);
+    node.setAttribute("ry", `${FRAME_STYLE.radius}`);
+    node.setAttribute("fill", "none");
+    node.setAttribute("stroke", FRAME_STYLE.strokeColor);
+    node.setAttribute("stroke-width", `${FRAME_STYLE.strokeWidth}`);
+    return [node];
+  };
+
+  const draw = (element: NonDeletedExcalidrawElement) => {
+    if (
+      element.type === "embeddable" ||
+      element.type === "iframe" ||
+      element.type === "selection"
+    )
+      return;
+    if (element.type === "text") return place(element, drawText(element));
+    if (element.type === "image") return place(element, drawImage(element));
+    if (isFrameLikeElement(element)) return place(element, drawFrame(element));
+
+    const shape = ShapeCache.generateElementShape(
+      element as Exclude<NonDeletedExcalidrawElement, { type: "selection" }>,
+      renderConfig,
+    );
+    if (!shape) return;
+    const parts: unknown[] = Array.isArray(shape) ? shape : [shape];
+    const nodes: SVGElement[] = [];
+    for (const part of parts) {
+      if (!part) continue;
+      if (typeof part === "string") {
+        const path = ownerDocument.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", part);
+        path.setAttribute(
+          "fill",
+          applyDarkModeFilter(element.strokeColor, dark),
+        );
+        nodes.push(path);
+      } else {
+        const node = roughSvg.draw(part as Drawable);
+        node.setAttribute("stroke-linecap", "round");
+        nodes.push(node);
+      }
+    }
+    place(element, nodes);
+  };
+
+  for (const element of elements) {
+    if (element.type === "text" && element.containerId) continue;
+    draw(element);
+    const label = getBoundTextElement(element, map);
+    if (label) draw(label);
+  }
+  return svg;
 };
 
 export const transformElementsWithExcalidraw = ({
