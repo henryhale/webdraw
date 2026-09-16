@@ -29,3 +29,7 @@ drawing.setAttribute(
 Listen for `webdraw-ready`, `webdraw-change` (scene elements, app state, and files), `webdraw-library-change` (library items), and `webdraw-error` (invalid library JSON or scene files). These events bubble and cross the component boundary. `getSceneElements()`, `getAppState()`, `updateScene()`, `addFiles()`, and `resetScene()` are available for programmatic use.
 
 Webdraw saves scenes as `.webdraw` JSON files. Library items come from the `library` attribute or canvas selections.
+
+## Credits
+
+Webdraw is based on [Excalidraw](https://github.com/excalidraw/excalidraw) and adapts its work into a framework-agnostic web component. Thanks to the Excalidraw team and contributors for making that foundation open source.

@@ -88,3 +88,7 @@ Draw on the canvas, or use the button to produce the same event programmatically
 <WebdrawDemo demo="change-event" />
 
 Continue with [attributes](/guide/attributes), [properties](/guide/properties), [methods](/guide/methods), and [events](/guide/events).
+
+## Credits
+
+Webdraw is based on [Excalidraw](https://github.com/excalidraw/excalidraw) and adapts its work into a framework-agnostic web component. Thanks to the Excalidraw team and contributors for making that foundation open source.
