@@ -214,7 +214,7 @@ export class WebDraw extends LitElement {
   viewModeEnabled = false;
   zenModeEnabled = false;
   gridModeEnabled = false;
-  libraryEnabled: "on" | "off" = "off";
+  libraryEnabled: "on" | "off" = "on";
   library: string | null = null;
   storageKey = "webdraw-library";
   initialData?: WebdrawInitialData;

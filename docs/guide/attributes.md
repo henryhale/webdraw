@@ -68,7 +68,7 @@ Library elements must have string `id` and `type` fields. Images and embeds are 
 
 ## `library-enabled`
 
-Set `library-enabled="on"` to show the library button. It is `"off"` by default.
+Set `library-enabled="off"` to hide the library button. It is `"on"` by default.
 
 ```html
 <web-draw library-enabled="on"></web-draw>

@@ -60,7 +60,7 @@ drawing.library = JSON.stringify([
 
 ## `libraryEnabled`
 
-Set `"on"` to show the library button or `"off"` to hide it. The default is `"off"`.
+Set `"on"` to show the library button or `"off"` to hide it. The default is `"on"`.
 
 ```js
 drawing.libraryEnabled = "on";
