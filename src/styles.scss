@@ -363,11 +363,12 @@ web-draw {
   padding: 0 0.75rem;
   border: 0;
   border-radius: var(--border-radius-lg);
-  color: #fff;
-  background: var(--color-primary);
+  color: var(--icon-fill-color);
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
 
   &:hover {
-    background: var(--color-primary-darker);
+    background: var(--button-hover-bg);
   }
   svg {
     width: 1rem;
