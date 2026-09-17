@@ -81,6 +81,9 @@
         "pnpm build"
       ]
     },
+    "git": {
+      "tagName": "v${version}"
+    },
     "npm": {
       "publishPackageManager": "pnpm"
     },
