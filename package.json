@@ -80,7 +80,10 @@
     },
     "npm": {
       "publishPackageManager": "pnpm",
-      "skipChecks": true
+      "skipChecks": true,
+      "publishArgs": [
+        "--no-git-checks"
+      ]
     },
     "github": {
       "release": true
