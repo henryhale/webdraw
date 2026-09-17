@@ -1,5 +1,5 @@
 {
-  "name": "webdraw",
+  "name": "wdraw",
   "version": "0.1.0",
   "description": "Like excalidraw drawing editor but as a framework-agnostic Lit web component",
   "repository": {
@@ -31,6 +31,8 @@
     "release": "release-it"
   },
   "keywords": [
+    "wdraw",
+    "web-draw",
     "webdraw",
     "lit",
     "web-component",

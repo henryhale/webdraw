@@ -9,23 +9,23 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/webdraw"><img src="https://img.shields.io/npm/v/webdraw.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/wdraw"><img src="https://img.shields.io/npm/v/wdraw.svg" alt="npm version"></a>
   <a href="https://github.com/henryhale/webdraw/releases"><img src="https://img.shields.io/github/v/release/henryhale/webdraw.svg" alt="latest release"></a>
   <a href="https://github.com/henryhale/webdraw/actions/workflows/pages.yml"><img src="https://github.com/henryhale/webdraw/actions/workflows/pages.yml/badge.svg" alt="docs deployment"></a>
-  <a href="https://github.com/henryhale/webdraw/blob/master/LICENSE.txt"><img src="https://img.shields.io/npm/l/webdraw.svg" alt="license"></a>
+  <a href="https://github.com/henryhale/webdraw/blob/master/LICENSE.txt"><img src="https://img.shields.io/github/license/henryhale/webdraw.svg" alt="license"></a>
 </p>
 
 ## Quick start
 
 ```bash
-npm install webdraw
+npm install wdraw
 ```
 
 Import the component and its stylesheet, then give the element a height:
 
 ```js
-import "webdraw";
-import "webdraw/style.css";
+import "wdraw";
+import "wdraw/style.css";
 ```
 
 ```html

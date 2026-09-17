@@ -25,12 +25,12 @@ hero:
 Install Webdraw, import the component and its stylesheet, then give the element a height.
 
 ```bash
-pnpm add webdraw
+pnpm add wdraw
 ```
 
 ```js
-import "webdraw";
-import "webdraw/style.css";
+import "wdraw";
+import "wdraw/style.css";
 ```
 
 ```html
