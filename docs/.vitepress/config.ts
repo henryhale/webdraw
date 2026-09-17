@@ -2,11 +2,14 @@ import { cpSync, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vitepress";
 
+const base = "/webdraw/";
+
 export default defineConfig({
+  base,
   title: "Webdraw",
   description: "Build drawing experiences with the Webdraw web component",
   cleanUrls: true,
-  head: [["link", { rel: "icon", href: "/logo.svg" }]],
+  head: [["link", { rel: "icon", href: `${base}logo.svg` }]],
   themeConfig: {
     logo: { src: "/logo.svg", alt: "Webdraw" },
     nav: [
