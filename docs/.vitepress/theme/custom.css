@@ -41,7 +41,7 @@
 }
 
 .webdraw-demo__stage {
-  height: 360px;
+  height: 440px;
   background: var(--vp-c-bg);
 }
 
@@ -64,6 +64,6 @@
 
 @media (max-width: 640px) {
   .webdraw-demo__stage {
-    height: 440px;
+    height: 520px;
   }
 }
