@@ -86,7 +86,8 @@
       "tagName": "v${version}"
     },
     "npm": {
-      "publishPackageManager": "pnpm"
+      "publishPackageManager": "pnpm",
+      "skipChecks": true
     },
     "github": {
       "release": true
