@@ -43,13 +43,6 @@
     "url": "https://github.com/henryhale"
   },
   "license": "MIT",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "11.24.0",
-      "onFail": "download"
-    }
-  },
   "packageManager": "pnpm@11.24.0",
   "type": "module",
   "dependencies": {
