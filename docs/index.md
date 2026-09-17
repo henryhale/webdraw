@@ -44,6 +44,25 @@ import "wdraw/style.css";
 <web-draw></web-draw>
 ```
 
+### Use a CDN instead
+
+No build step needed. The bundle ships every dependency, so a module script is enough.
+
+```html
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/wdraw/dist/webdraw.css"
+/>
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/wdraw/dist/webdraw.js"
+></script>
+
+<web-draw></web-draw>
+```
+
+Pin a version for production, such as `wdraw@0.2.0`, so a release cannot change the page under you. unpkg works the same way with `https://unpkg.com/wdraw/dist/webdraw.js`.
+
 The canvas below is the actual component. Draw something, switch its theme, or clear it.
 
 <WebdrawDemo demo="quick-start" />
