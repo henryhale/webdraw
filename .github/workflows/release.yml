@@ -22,7 +22,6 @@ jobs:
         uses: pnpm/setup@v2
         with:
           runtime: node@24
-          require-lockfile: true
       - name: Authenticate with npm
         # .npmrc is gitignored, so this keeps the working dir clean for release-it.
         run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
