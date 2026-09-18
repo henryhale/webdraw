@@ -1089,9 +1089,7 @@ export class WebDraw extends LitElement {
           <span class="welcome-logo-mark">${logoIcon}</span
           ><strong>Webdraw</strong>
         </div>
-        <div class="welcome-screen-center__heading">
-          Diagrams. Made. Simple.
-        </div>
+        <div class="welcome-screen-center__heading">Sketch. Think. Share.</div>
         <div class="welcome-screen-menu">
           <button
             class="welcome-screen-menu-item"
