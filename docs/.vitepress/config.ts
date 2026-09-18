@@ -37,6 +37,10 @@ export default defineConfig({
         'Copyright © 2026-present, <a href="https://github.com/henryhale">Henry Hale</a>.',
     },
     search: { provider: "local" },
+    socialLinks: [
+      { icon: "github", link: "https://github.com/henryhale/webdraw" },
+      { icon: "npm", link: "https://www.npmjs.com/package/wdraw" },
+    ],
   },
   vite: {
     plugins: [
