@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1](https://github.com/henryhale/webdraw/compare/v0.2.0...v0.2.1) (2026-09-18)
+
+### Features
+
+* **editor:** replace welcome screen tagline ([0eaadbb](https://github.com/henryhale/webdraw/commit/0eaadbba5810527ee312cc62042c3549f36eb911))
+
+### Bug Fixes
+
+* **docs:** set base path for github pages ([d1c7ebb](https://github.com/henryhale/webdraw/commit/d1c7ebb16c0c27c3e2de9b9e895acf7644bca924))
+
 ## 0.2.0 (2026-09-17)
 
 ### Features
